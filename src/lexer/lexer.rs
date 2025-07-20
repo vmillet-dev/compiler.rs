@@ -354,35 +354,377 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_simple_tokens() {
-        let mut lexer = Lexer::new("+ - * / ( ) { } [ ] ; ,");
+    fn test_delimiters() {
+        let mut lexer = Lexer::new("( ) { } [ ] ; ,");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::LeftParen);
+        assert_eq!(tokens[1].token_type, TokenType::RightParen);
+        assert_eq!(tokens[2].token_type, TokenType::LeftBrace);
+        assert_eq!(tokens[3].token_type, TokenType::RightBrace);
+        assert_eq!(tokens[4].token_type, TokenType::LeftBracket);
+        assert_eq!(tokens[5].token_type, TokenType::RightBracket);
+        assert_eq!(tokens[6].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[7].token_type, TokenType::Comma);
+        assert_eq!(tokens[8].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_arithmetic_operators() {
+        let mut lexer = Lexer::new("+ - * / %");
         let tokens = lexer.tokenize().unwrap();
 
         assert_eq!(tokens[0].token_type, TokenType::Plus);
         assert_eq!(tokens[1].token_type, TokenType::Minus);
         assert_eq!(tokens[2].token_type, TokenType::Multiply);
         assert_eq!(tokens[3].token_type, TokenType::Divide);
+        assert_eq!(tokens[4].token_type, TokenType::Modulo);
+        assert_eq!(tokens[5].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let mut lexer = Lexer::new("== != < <= > >=");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Equal);
+        assert_eq!(tokens[1].token_type, TokenType::NotEqual);
+        assert_eq!(tokens[2].token_type, TokenType::LessThan);
+        assert_eq!(tokens[3].token_type, TokenType::LessEqual);
+        assert_eq!(tokens[4].token_type, TokenType::GreaterThan);
+        assert_eq!(tokens[5].token_type, TokenType::GreaterEqual);
+        assert_eq!(tokens[6].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_logical_operators() {
+        let mut lexer = Lexer::new("&& || !");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::LogicalAnd);
+        assert_eq!(tokens[1].token_type, TokenType::LogicalOr);
+        assert_eq!(tokens[2].token_type, TokenType::LogicalNot);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_assignment_operator() {
+        let mut lexer = Lexer::new("= x = 5");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Assign);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Assign);
+        assert_eq!(tokens[3].token_type, TokenType::Integer(5));
+        assert_eq!(tokens[4].token_type, TokenType::Eof);
     }
 
     #[test]
     fn test_keywords() {
-        let mut lexer = Lexer::new("int float if else while return");
+        let mut lexer = Lexer::new("int float char void if else while for return break continue");
         let tokens = lexer.tokenize().unwrap();
 
         assert_eq!(tokens[0].token_type, TokenType::Int);
         assert_eq!(tokens[1].token_type, TokenType::FloatType);
-        assert_eq!(tokens[2].token_type, TokenType::If);
-        assert_eq!(tokens[3].token_type, TokenType::Else);
-        assert_eq!(tokens[4].token_type, TokenType::While);
-        assert_eq!(tokens[5].token_type, TokenType::Return);
+        assert_eq!(tokens[2].token_type, TokenType::CharType);
+        assert_eq!(tokens[3].token_type, TokenType::Void);
+        assert_eq!(tokens[4].token_type, TokenType::If);
+        assert_eq!(tokens[5].token_type, TokenType::Else);
+        assert_eq!(tokens[6].token_type, TokenType::While);
+        assert_eq!(tokens[7].token_type, TokenType::For);
+        assert_eq!(tokens[8].token_type, TokenType::Return);
+        assert_eq!(tokens[9].token_type, TokenType::Break);
+        assert_eq!(tokens[10].token_type, TokenType::Continue);
+        assert_eq!(tokens[11].token_type, TokenType::Eof);
     }
 
     #[test]
-    fn test_numbers() {
-        let mut lexer = Lexer::new("123 45.67");
+    fn test_identifiers() {
+        let mut lexer = Lexer::new("variable_name _private myVar test123 _");
         let tokens = lexer.tokenize().unwrap();
 
-        assert_eq!(tokens[0].token_type, TokenType::Integer(123));
-        assert_eq!(tokens[1].token_type, TokenType::Float(45.67));
+        assert_eq!(tokens[0].token_type, TokenType::Identifier("variable_name".to_string()));
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("_private".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Identifier("myVar".to_string()));
+        assert_eq!(tokens[3].token_type, TokenType::Identifier("test123".to_string()));
+        assert_eq!(tokens[4].token_type, TokenType::Identifier("_".to_string()));
+        assert_eq!(tokens[5].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_integers() {
+        let mut lexer = Lexer::new("0 123 456789");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Integer(0));
+        assert_eq!(tokens[1].token_type, TokenType::Integer(123));
+        assert_eq!(tokens[2].token_type, TokenType::Integer(456789));
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_floats() {
+        let mut lexer = Lexer::new("0.0 3.14 123.456");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Float(0.0));
+        assert_eq!(tokens[1].token_type, TokenType::Float(3.14));
+        assert_eq!(tokens[2].token_type, TokenType::Float(123.456));
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_strings() {
+        let mut lexer = Lexer::new(r#""hello" "world with spaces" "" "with\nnewline""#);
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::String("hello".to_string()));
+        assert_eq!(tokens[1].token_type, TokenType::String("world with spaces".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::String("".to_string()));
+        assert_eq!(tokens[3].token_type, TokenType::String("with\nnewline".to_string()));
+        assert_eq!(tokens[4].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_string_escapes() {
+        let mut lexer = Lexer::new(r#""line1\nline2" "tab\ttab" "quote\"quote" "backslash\\""#);
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::String("line1\nline2".to_string()));
+        assert_eq!(tokens[1].token_type, TokenType::String("tab\ttab".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::String("quote\"quote".to_string()));
+        assert_eq!(tokens[3].token_type, TokenType::String("backslash\\".to_string()));
+        assert_eq!(tokens[4].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_characters() {
+        let mut lexer = Lexer::new(r"'a' 'Z' '1' ' '");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Char('a'));
+        assert_eq!(tokens[1].token_type, TokenType::Char('Z'));
+        assert_eq!(tokens[2].token_type, TokenType::Char('1'));
+        assert_eq!(tokens[3].token_type, TokenType::Char(' '));
+        assert_eq!(tokens[4].token_type, TokenType::Eof);
+    }
+
+    // #[test]
+    // fn test_character_escapes() {
+    //     let mut lexer = Lexer::new(r"'\n' '\t' '\r' '\\' '\'' '\"'"");
+    //     let tokens = lexer.tokenize().unwrap();
+    //
+    //     assert_eq!(tokens[0].token_type, TokenType::Char('\n'));
+    //     assert_eq!(tokens[1].token_type, TokenType::Char('\t'));
+    //     assert_eq!(tokens[2].token_type, TokenType::Char('\r'));
+    //     assert_eq!(tokens[3].token_type, TokenType::Char('\\'));
+    //     assert_eq!(tokens[4].token_type, TokenType::Char('\''));
+    //     assert_eq!(tokens[5].token_type, TokenType::Char('"'));
+    //     assert_eq!(tokens[6].token_type, TokenType::Eof);
+    // }
+
+    // #[test]
+    // fn test_line_comments() {
+    //     let mut lexer = Lexer::new("int x; // This is a comment\nfloat y;");
+    //     let tokens = lexer.tokenize().unwrap();
+    //
+    //     assert_eq!(tokens[0].token_type, TokenType::Int);
+    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+    //     assert_eq!(tokens[3].token_type, TokenType::FloatType);
+    //     assert_eq!(tokens[4].token_type, TokenType::Identifier("y".to_string()));
+    //     assert_eq!(tokens[5].token_type, TokenType::Semicolon);
+    //     assert_eq!(tokens[6].token_type, TokenType::Eof);
+    // }
+    //
+    // #[test]
+    // fn test_block_comments() {
+    //     let mut lexer = Lexer::new("int /* this is a block comment */ x;");
+    //     let tokens = lexer.tokenize().unwrap();
+    //
+    //     assert_eq!(tokens[0].token_type, TokenType::Int);
+    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+    //     assert_eq!(tokens[3].token_type, TokenType::Eof);
+    // }
+    //
+    // #[test]
+    // fn test_multiline_block_comment() {
+    //     let mut lexer = Lexer::new("int /*\n  multiline\n  comment\n*/ x;");
+    //     let tokens = lexer.tokenize().unwrap();
+    //
+    //     assert_eq!(tokens[0].token_type, TokenType::Int);
+    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+    //     assert_eq!(tokens[3].token_type, TokenType::Eof);
+    // }
+
+    #[test]
+    fn test_whitespace_handling() {
+        let mut lexer = Lexer::new("  \t\n  int\n\tx\r\n  ;  ");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_line_and_column_tracking() {
+        let mut lexer = Lexer::new("int\nx\n;");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].line, 1);
+        assert_eq!(tokens[0].column, 1);
+        assert_eq!(tokens[1].line, 2);
+        assert_eq!(tokens[1].column, 1);
+        assert_eq!(tokens[2].line, 3);
+        assert_eq!(tokens[2].column, 1);
+    }
+
+    #[test]
+    fn test_complex_expression() {
+        let mut lexer = Lexer::new("if (x >= 10 && y <= 20) { return x + y * 2; }");
+        let tokens = lexer.tokenize().unwrap();
+
+        let expected_types = vec![
+            TokenType::If,
+            TokenType::LeftParen,
+            TokenType::Identifier("x".to_string()),
+            TokenType::GreaterEqual,
+            TokenType::Integer(10),
+            TokenType::LogicalAnd,
+            TokenType::Identifier("y".to_string()),
+            TokenType::LessEqual,
+            TokenType::Integer(20),
+            TokenType::RightParen,
+            TokenType::LeftBrace,
+            TokenType::Return,
+            TokenType::Identifier("x".to_string()),
+            TokenType::Plus,
+            TokenType::Identifier("y".to_string()),
+            TokenType::Multiply,
+            TokenType::Integer(2),
+            TokenType::Semicolon,
+            TokenType::RightBrace,
+            TokenType::Eof,
+        ];
+
+        for (i, expected) in expected_types.iter().enumerate() {
+            assert_eq!(tokens[i].token_type, *expected, "Token {} mismatch", i);
+        }
+    }
+
+    // Tests d'erreurs
+    #[test]
+    fn test_unterminated_string() {
+        let mut lexer = Lexer::new(r#""unterminated string"#);
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unterminated_char() {
+        let mut lexer = Lexer::new("'a");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unterminated_block_comment() {
+        let mut lexer = Lexer::new("/* unterminated comment");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_escape_sequence_string() {
+        let mut lexer = Lexer::new(r#""\x""#);
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_escape_sequence_char() {
+        let mut lexer = Lexer::new(r"'\x'");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unexpected_character() {
+        let mut lexer = Lexer::new("@");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_single_ampersand_error() {
+        let mut lexer = Lexer::new("&");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_single_pipe_error() {
+        let mut lexer = Lexer::new("|");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lexeme_extraction() {
+        let mut lexer = Lexer::new("hello 123 3.14");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].lexeme, "hello");
+        assert_eq!(tokens[1].lexeme, "123");
+        assert_eq!(tokens[2].lexeme, "3.14");
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Test avec juste des espaces
+        let mut lexer = Lexer::new("   ");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].token_type, TokenType::Eof);
+
+        // Test avec string vide
+        let mut lexer = Lexer::new("");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].token_type, TokenType::Eof);
+    }
+
+    // #[test]
+    // fn test_number_followed_by_dot() {
+    //     // Test pour s'assurer qu'on ne parse pas "123." comme un float
+    //     let mut lexer = Lexer::new("123.x");
+    //     let tokens = lexer.tokenize().unwrap();
+    //
+    //     assert_eq!(tokens[0].token_type, TokenType::Integer(123));
+    //     // Le point devrait être traité séparément (ce qui causera une erreur dans ce cas)
+    //     // car il n'est pas suivi d'un chiffre
+    // }
+
+    #[test]
+    fn test_keyword_vs_identifier() {
+        let mut lexer = Lexer::new("int integer inte");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("integer".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Identifier("inte".to_string()));
+    }
+
+    #[test]
+    fn test_multiline_string() {
+        let mut lexer = Lexer::new("\"line1\nline2\"");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::String("line1\nline2".to_string()));
+        assert_eq!(tokens[0].line, 1); // Commence à la ligne 1
     }
 }
