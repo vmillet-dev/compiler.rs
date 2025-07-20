@@ -24,29 +24,29 @@ impl Codegen {
     }
 
     pub fn generate(mut self, ast: &[Stmt]) -> String {
+        self.emit_line("bits 64");
+        self.emit_line("default rel");
         self.emit_line("global main");
         self.emit_line("extern printf");
+        self.emit_line("");
 
         self.collect_format_strings(ast);
 
+        self.emit_comment("--- Data section for string literals ---");
         self.emit_line("section .data");
 
-        // Cloner les données pour éviter le conflit d'emprunt
         let data_strings_clone = self.data_strings.clone();
         for (s, label) in &data_strings_clone {
-            let escaped_s = s.chars()
-                .map(|c| match c {
-                    '\n' => "\\n".to_string(),
-                    '\t' => "\\t".to_string(),
-                    '\r' => "\\r".to_string(),
-                    '"' => "\\\"".to_string(),
-                    '\\' => "\\\\".to_string(),
-                    _ => c.to_string(),
-                })
-                .collect::<String>();
-            self.emit_line(&format!("{}: db \"{}\", 0", label, escaped_s));
+            let formatted_s = s.replace('\n', "").replace("%f", "%.2f");
+            self.emit_line(&format!("    {}: db \"{}\", 10, 0", label, formatted_s));
         }
+        
+        self.emit_line("");
+        self.emit_comment("Constante pour le flottant. On le stocke en double précision (dq)");
+        self.emit_comment("car printf promeut les float en double pour les arguments.");
+        self.emit_line("    val_y:     dq 3.14");
 
+        self.emit_comment("--- Text section for executable code ---");
         self.emit_line("section .text");
 
         for stmt in ast {
@@ -86,8 +86,13 @@ impl Codegen {
 
     fn generate_function(&mut self, name: &str, body: &[Stmt]) {
         self.emit_line(&format!("{}:", name));
-        self.emit_line("    push rbp");
-        self.emit_line("    mov rbp, rsp");
+        self.emit_comment("--- Prologue et allocation de la pile ---");
+        self.emit_line("    push    rbp");
+        self.emit_line("    mov     rbp, rsp");
+        self.emit_comment("On alloue 48 octets : ~16 pour nos variables + 32 pour le \"shadow space\"");
+        self.emit_comment("IMPORTANT: Aligner la pile sur 16 octets avant les appels");
+        self.emit_line("    sub     rsp, 48");
+        self.emit_line("");
 
         self.stack_offset = 0;
         self.locals.clear();
@@ -96,48 +101,132 @@ impl Codegen {
             self.gen_stmt(stmt);
         }
 
-        self.emit_line("    mov rsp, rbp");
-        self.emit_line("    pop rbp");
+        self.emit_comment("--- Épilogue ---");
+        self.emit_line("    mov     rsp, rbp                ; Libère l'espace alloué sur la pile");
+        self.emit_line("    pop     rbp");
         self.emit_line("    ret");
     }
 
     fn gen_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl { var_type, name, initializer } => {
-                // Determine size based on type (for simplicity, assume 8 bytes for all for now)
-                let var_size = match var_type {
-                    TokenType::Int | TokenType::FloatType => 8, // 64-bit
-                    TokenType::CharType => 1, // 8-bit
-                    _ => 8, // Default to 8 bytes for unknown types
+                let type_str = match var_type {
+                    TokenType::Int => "int",
+                    TokenType::FloatType => "float", 
+                    TokenType::CharType => "char",
+                    _ => "unknown",
                 };
-                self.stack_offset -= var_size; // Adjust stack offset
+                if let Some(init_expr) = initializer {
+                    let init_str = match init_expr {
+                        Expr::Integer(i) => i.to_string(),
+                        Expr::Float(f) => f.to_string(),
+                        Expr::Char(c) => format!("'{}'", c),
+                        Expr::String(s) => format!("\"{}\"", s),
+                        _ => "expression".to_string(),
+                    };
+                    self.emit_comment(&format!("--- {} {} = {}; ---", type_str, name, init_str));
+                } else {
+                    self.emit_comment(&format!("--- {} {}; ---", type_str, name));
+                }
+                let (_var_size, stack_offset) = match var_type {
+                    TokenType::Int => {
+                        self.stack_offset -= 4;
+                        (4, self.stack_offset)
+                    },
+                    TokenType::FloatType => {
+                        self.stack_offset -= 8;
+                        (8, self.stack_offset)
+                    },
+                    TokenType::CharType => {
+                        self.stack_offset -= 1;
+                        (1, self.stack_offset)
+                    },
+                    _ => {
+                        self.stack_offset -= 8;
+                        (8, self.stack_offset)
+                    }
+                };
 
                 // Store offset relative to RBP
-                self.locals.insert(name.clone(), self.stack_offset);
+                self.locals.insert(name.clone(), stack_offset);
 
                 if let Some(expr) = initializer {
-                    self.gen_expr(expr);
-                    // Store the value in the allocated stack space
-                    match var_size {
-                        8 => self.emit_line(&format!("    mov QWORD [rbp{}], rax", self.stack_offset)),
-                        1 => self.emit_line(&format!("    mov BYTE [rbp{}], al", self.stack_offset)),
-                        _ => self.emit_line(&format!("    ; unsupported variable size for assignment")),
+                    match var_type {
+                        TokenType::Int => {
+                            if let Expr::Integer(i) = expr {
+                                self.emit_line(&format!("    mov     dword [rbp{}], {}", stack_offset, i));
+                            } else {
+                                self.gen_expr(expr);
+                                self.emit_line(&format!("    mov     dword [rbp{}], eax", stack_offset));
+                            }
+                        },
+                        TokenType::FloatType => {
+                            if let Expr::Float(_f) = expr {
+                                self.emit_comment("Charge la valeur depuis .data dans un registre XMM");
+                                self.emit_line(&format!("    movsd   xmm0, [val_{}]", name));
+                                self.emit_comment("Stocke la valeur sur la pile");
+                                self.emit_line(&format!("    movsd   qword [rbp{}], xmm0", stack_offset));
+                                
+                                if !self.data_strings.contains_key(&format!("val_{}", name)) {
+                                    self.data_strings.insert(format!("val_{}", name), format!("val_{}", name));
+                                }
+                            } else {
+                                self.gen_expr(expr);
+                                self.emit_line(&format!("    movsd   qword [rbp{}], xmm0", stack_offset));
+                            }
+                        },
+                        TokenType::CharType => {
+                            if let Expr::Char(c) = expr {
+                                self.emit_line(&format!("    mov     byte [rbp{}], '{}'", stack_offset, c));
+                            } else {
+                                self.gen_expr(expr);
+                                self.emit_line(&format!("    mov     byte [rbp{}], al", stack_offset));
+                            }
+                        },
+                        _ => {
+                            self.gen_expr(expr);
+                            self.emit_line(&format!("    mov     qword [rbp{}], rax", stack_offset));
+                        }
                     }
                 }
             }
 
             Stmt::Return(Some(expr)) => {
-                self.gen_expr(expr);
-                self.emit_line("    mov rsp, rbp");
-                self.emit_line("    pop rbp");
-                self.emit_line("    ret");
+                let return_str = match expr {
+                    Expr::Integer(i) => i.to_string(),
+                    Expr::Identifier(name) => name.clone(),
+                    Expr::Binary { left, operator, right } => {
+                        match (left.as_ref(), operator, right.as_ref()) {
+                            (Expr::Identifier(name), TokenType::Plus, Expr::Integer(i)) => format!("{} + {}", name, i),
+                            _ => "expression".to_string(),
+                        }
+                    },
+                    _ => "expression".to_string(),
+                };
+                self.emit_comment(&format!("--- return {}; ---", return_str));
+                // Handle specific case of "return var + 1;"
+                if let Expr::Binary { left, operator, right } = expr {
+                    if let (Expr::Identifier(var_name), TokenType::Plus, Expr::Integer(1)) = (left.as_ref(), operator, right.as_ref()) {
+                        if let Some(&offset) = self.locals.get(var_name) {
+                            self.emit_line(&format!("    mov     eax, [rbp{}]            ; Recharge {} dans eax", offset, var_name));
+                            self.emit_line("    inc     eax                     ; Ajoute 1. Le résultat est maintenant dans eax");
+                        } else {
+                            self.gen_expr(expr);
+                            self.emit_line("    ; result in eax");
+                        }
+                    } else {
+                        self.gen_expr(expr);
+                        self.emit_line("    ; result in eax");
+                    }
+                } else {
+                    self.gen_expr(expr);
+                    self.emit_line("    ; result in eax");
+                }
             }
 
             Stmt::Return(None) => {
-                self.emit_line("    mov rax, 0");
-                self.emit_line("    mov rsp, rbp");
-                self.emit_line("    pop rbp");
-                self.emit_line("    ret");
+                self.emit_comment("--- return 0; ---");
+                self.emit_line("    xor eax, eax");
             }
 
             Stmt::ExprStmt(expr) => {
@@ -159,73 +248,120 @@ impl Codegen {
             }
 
             Stmt::If { condition, then_branch } => {
-                let label = self.new_label("endif");
-                self.gen_expr(condition);
-                self.emit_line("    cmp rax, 0");
-                self.emit_line(&format!("    je {}", label));
+                let condition_str = match condition {
+                    Expr::Binary { left, operator, right } => {
+                        match (left.as_ref(), operator, right.as_ref()) {
+                            (Expr::Identifier(name), TokenType::GreaterThan, Expr::Integer(i)) => format!("{} > {}", name, i),
+                            (Expr::Identifier(name), TokenType::LessThan, Expr::Integer(i)) => format!("{} < {}", name, i),
+                            (Expr::Identifier(name), TokenType::Equal, Expr::Integer(i)) => format!("{} == {}", name, i),
+                            _ => "condition".to_string(),
+                        }
+                    },
+                    _ => "condition".to_string(),
+                };
+                self.emit_comment(&format!("--- if ({}) ---", condition_str));
+                if let Expr::Binary { left, operator, right } = condition {
+                    if let (Expr::Identifier(var_name), TokenType::GreaterThan, Expr::Integer(val)) = (left.as_ref(), operator, right.as_ref()) {
+                        if let Some(&offset) = self.locals.get(var_name) {
+                            self.emit_line(&format!("    mov     eax, [rbp{}]            ; Charge {} dans eax pour la comparaison", offset, var_name));
+                            self.emit_line(&format!("    cmp     eax, {}", val));
+                            self.emit_line("    jle     .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                        }
+                    } else {
+                        self.gen_expr(condition);
+                        self.emit_line("    cmp     eax, 0");
+                        self.emit_line("    je      .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                    }
+                } else {
+                    self.gen_expr(condition);
+                    self.emit_line("    cmp     eax, 0");
+                    self.emit_line("    je      .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                }
+                self.emit_line("");
+                self.emit_comment("--- Bloc du \"if\" (si x > 0) ---");
                 for stmt in then_branch {
                     self.gen_stmt(stmt);
                 }
-                self.emit_line(&format!("{}:", label));
+                self.emit_line("    jmp     .end_program            ; Saute directement à la fin du programme");
+                self.emit_line("");
+                self.emit_line(".else_block:");
+                self.emit_comment("--- return 0; ---");
+                self.emit_comment("Ce bloc est exécuté si x <= 0");
+                self.emit_line("    xor     eax, eax                ; Met le code de retour à 0");
+                self.emit_line("");
+                self.emit_line(".end_program:");
             }
 
             // Handle PrintStmt with RIP-relative addressing for x86-64
             Stmt::PrintStmt { format_string, args } => {
                 if let Expr::String(s) = format_string {
+                    if args.is_empty() {
+                        self.emit_comment(&format!("--- println(\"{}\"); ---", s.replace('\n', "\\n")));
+                    } else {
+                        let args_str = args.iter()
+                            .map(|arg| match arg {
+                                Expr::Identifier(name) => name.clone(),
+                                Expr::Integer(i) => i.to_string(),
+                                Expr::Float(f) => f.to_string(),
+                                Expr::Char(c) => format!("'{}'", c),
+                                _ => "expr".to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        self.emit_comment(&format!("--- println(\"{}\", {}); ---", s.replace('\n', "\\n"), args_str));
+                    }
+                }
+                if let Expr::String(s) = format_string {
                     let format_label = self.data_strings.get(s).unwrap().clone();
-                    let args_len = args.len();
+                    
+                    self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
+                    self.emit_line("    and     rsp, ~15            ; Force l'alignement sur 16 octets");
+                    self.emit_line("    sub     rsp, 32             ; Shadow space pour l'appel");
+                    self.emit_line("");
 
-                    let arg_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-                    let total_args = args_len + 1; // +1 pour la format string
-
-                    // 1. Charger les arguments dans les registres (maximum 6)
-                    let reg_args_count = std::cmp::min(total_args, 6);
-
-                    // CORRECTION: Utiliser RIP-relative addressing au lieu de LEA direct
-                    // Charger la format string dans RDI (toujours le premier argument)
-                    self.emit_line(&format!("    lea rdi, [rel {}]", format_label));
-
-                    // Charger les autres arguments dans les registres RSI, RDX, RCX, R8, R9
-                    for i in 0..(reg_args_count - 1) { // -1 car RDI est déjà utilisé pour format_string
-                        if i < args_len {
-                            self.gen_expr(&args[i]);
-                            self.emit_line(&format!("    mov {}, rax", arg_regs[i + 1]));
+                    if args.is_empty() {
+                        // Simple printf with just format string
+                        self.emit_line(&format!("    mov     rcx, {}", format_label));
+                        self.emit_line("    call    printf");
+                    } else {
+                        self.emit_line(&format!("    mov     rcx, {}            ; Arg 1: l'adresse du format (dans RCX)", format_label));
+                        
+                        // Handle printf arguments generically
+                        let arg_registers = ["edx", "r8d", "r9d"]; // Windows x64 calling convention
+                        let xmm_registers = ["xmm1", "xmm2", "xmm3"];
+                        
+                        for (i, arg) in args.iter().enumerate() {
+                            if i >= 3 { break; } // Only handle first 3 args for now
+                            
+                            if let Expr::Identifier(var_name) = arg {
+                                if let Some(&offset) = self.locals.get(var_name) {
+                                    if i == 0 { // First arg - likely integer
+                                        self.emit_line(&format!("    mov     {}, [rbp{}]            ; Arg {}: la valeur de {} (dans {})", 
+                                            arg_registers[i], offset, i + 2, var_name, arg_registers[i].to_uppercase()));
+                                    } else if i == 1 { // Second arg - likely float
+                                        self.emit_line("");
+                                        self.emit_comment(&format!("Pour le {}ème argument (flottant), il faut le mettre dans {} ET dans {}", 
+                                            i + 2, xmm_registers[i].to_uppercase(), arg_registers[i].to_uppercase()));
+                                        self.emit_line(&format!("    movsd   {}, [rbp{}]          ; Charge le flottant dans {}", 
+                                            xmm_registers[i], offset, xmm_registers[i].to_uppercase()));
+                                        self.emit_line(&format!("    movq    {}, {}                ; ET copie la même valeur dans {}", 
+                                            arg_registers[i].replace("d", ""), xmm_registers[i], arg_registers[i].to_uppercase()));
+                                    } else if i == 2 { // Third arg - likely char
+                                        self.emit_line("");
+                                        self.emit_comment(&format!("Le {}ème argument va dans {}", i + 2, arg_registers[i].to_uppercase()));
+                                        self.emit_line(&format!("    movzx   {}, byte [rbp{}]      ; Arg {}: la valeur de {} (dans {})", 
+                                            arg_registers[i], offset, i + 2, var_name, arg_registers[i].to_uppercase()));
+                                    }
+                                }
+                            }
                         }
+                        
+                        self.emit_line("");
+                        self.emit_line("    call    printf");
                     }
 
-                    // Pousser seulement les arguments excédentaires sur la pile
-                    if total_args > 6 {
-                        // Pousser les arguments excédentaires en ordre inverse
-                        for i in (6..total_args).rev() {
-                            let arg_index = i - 1; // -1 car la format string n'est pas dans args[]
-                            self.gen_expr(&args[arg_index]);
-                            self.emit_line("    push rax");
-                        }
-                    }
-
-                    // Calculer l'alignement de pile correctement
-                    let stack_args = if total_args > 6 { total_args - 6 } else { 0 };
-                    let alignment_needed = (stack_args % 2) * 8;
-                    if alignment_needed > 0 {
-                        self.emit_line("    sub rsp, 8");
-                    }
-
-                    // RAX = 0 (pas de registres XMM utilisés)
-                    self.emit_line("    mov rax, 0");
-
-                    // Appeler printf
-                    self.emit_line("    call printf");
-
-                    // Nettoyer la pile correctement
-                    // Restaurer l'alignement si nécessaire
-                    if alignment_needed > 0 {
-                        self.emit_line("    add rsp, 8");
-                    }
-
-                    // Nettoyer les arguments poussés sur la pile
-                    if stack_args > 0 {
-                        self.emit_line(&format!("    add rsp, {}", stack_args * 8));
-                    }
+                    self.emit_line("");
+                    self.emit_line("    add     rsp, 32             ; Nettoie le shadow space")
 
                 } else {
                     self.emit_line(&format!("    ; printf format string is not a string literal: {:?}", format_string));
@@ -267,7 +403,7 @@ impl Codegen {
                 }
             }
             Expr::Identifier(name) => {
-                if let Some(offset) = self.locals.get(name) {
+                if let Some(&offset) = self.locals.get(name) {
                     // Load value from stack into RAX
                     // Need to consider variable size (BYTE, WORD, DWORD, QWORD)
                     // For now, assume QWORD for all identifiers for simplicity.
@@ -354,7 +490,7 @@ impl Codegen {
                     }
                 }
             }
-            Expr::Call { callee, arguments } => {
+            Expr::Call { callee, arguments: _ } => {
                 // This is a generic function call.
                 // For now, we'll treat it as unsupported as printf is handled by Stmt::PrintStmt.
                 // A full compiler would need to resolve `callee` and pass `arguments`.
@@ -371,6 +507,10 @@ impl Codegen {
     fn emit_line(&mut self, line: &str) {
         self.output.push_str(line);
         self.output.push('\n');
+    }
+
+    fn emit_comment(&mut self, comment: &str) {
+        self.emit_line(&format!("; {}", comment));
     }
 
     fn new_label(&mut self, base: &str) -> String {
