@@ -1,4 +1,5 @@
 use compiler_minic::lexer::Lexer;
+use compiler_minic::parser::Parser;
 
 fn main() {
     let code = r#"
@@ -21,9 +22,9 @@ fn main() {
     let mut lexer = Lexer::new(code);
     match lexer.tokenize() {
         Ok(tokens) => {
-            for token in tokens {
-                println!("{}", token);
-            }
+            let mut parser = Parser::new(tokens);
+            let ast = parser.parse();
+            println!("{:#?}", ast);
         }
         Err(e) => {
             eprintln!("Erreur de lexing: {}", e);
