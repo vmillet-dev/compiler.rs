@@ -1,7 +1,7 @@
 use crate::lexer::TokenType;
 
 // AST definitions
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Integer(i64),
     Float(f64),
@@ -12,6 +12,10 @@ pub enum Expr {
         left: Box<Expr>,
         operator: TokenType,
         right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        arguments: Vec<Expr>,
     },
 }
 
@@ -33,5 +37,9 @@ pub enum Stmt {
         return_type: TokenType,
         name: String,
         body: Vec<Stmt>,
+    },
+    PrintStmt {
+        format_string: Expr,
+        args: Vec<Expr>,
     },
 }

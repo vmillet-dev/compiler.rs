@@ -269,6 +269,7 @@ impl Lexer {
             "return" => TokenType::Return,
             "break" => TokenType::Break,
             "continue" => TokenType::Continue,
+            "println" => TokenType::Println,
             _ => TokenType::Identifier(text),
         };
 

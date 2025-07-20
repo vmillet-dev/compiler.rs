@@ -72,6 +72,36 @@ impl Parser {
             return Some(Stmt::If { condition, then_branch });
         }
 
+        if self.match_token(&TokenType::Println) {
+            self.consume(TokenType::LeftParen)?;
+
+            // Le premier argument doit être la chaîne de format
+            let format_string_expr = self.expression()?;
+            let format_string = match format_string_expr {
+                Expr::String(_) => format_string_expr,
+                _ => {
+                    eprintln!("Erreur d'analyse: Le premier argument de printf doit être une chaîne de caractères à {}:{}", self.peek().line, self.peek().column);
+                    return None; // Ou renvoyer une erreur plus spécifique
+                }
+            };
+
+            let mut args = Vec::new();
+            // Si le prochain token n'est pas ')' (fin des arguments), on s'attend à une virgule et d'autres arguments
+            while !self.check(&TokenType::RightParen) && !self.is_at_end() {
+                if self.check(&TokenType::Comma) { // Si on a une virgule, on la consomme
+                    self.advance();
+                } else if !args.is_empty() { // Si ce n'est pas la première itération et pas de virgule, c'est une erreur
+                    eprintln!("Erreur d'analyse: Virgule attendue entre les arguments de printf à {}:{}", self.peek().line, self.peek().column);
+                    return None;
+                }
+                args.push(self.expression()?);
+            }
+
+            self.consume(TokenType::RightParen)?;
+            self.consume(TokenType::Semicolon)?;
+            return Some(Stmt::PrintStmt { format_string, args });
+        }
+
         if let Some(var_type) = self.match_any_type() {
             let name = self.consume_identifier()?;
             let initializer = if self.match_token(&TokenType::Assign) {
@@ -150,8 +180,43 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Option<Expr> {
-        // no unary operators for now, fallback to primary
-        self.primary()
+        // Ajout de l'opérateur unaire '!' pour la négation logique
+        if let Some(op) = self.match_any(&[TokenType::LogicalNot, TokenType::Minus]) {
+            let right = self.unary()?; // Récursif pour gérer !!x ou -(-x)
+            return Some(Expr::Binary {
+                left: Box::new(Expr::Integer(0)), // Un placeholder, car l'opérateur unaire n'a pas de 'gauche'
+                operator: op,
+                right: Box::new(right),
+            });
+        }
+        self.call() // Passer à la gestion des appels de fonction
+    }
+
+    fn call(&mut self) -> Option<Expr> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.check(&TokenType::LeftParen) {
+                self.advance();
+                let mut arguments = Vec::new();
+                if !self.check(&TokenType::RightParen) {
+                    loop {
+                        arguments.push(self.expression()?);
+                        if !self.match_token(&TokenType::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(TokenType::RightParen)?;
+                expr = Expr::Call {
+                    callee: Box::new(expr),
+                    arguments,
+                };
+            } else {
+                break;
+            }
+        }
+        Some(expr)
     }
 
     fn primary(&mut self) -> Option<Expr> {

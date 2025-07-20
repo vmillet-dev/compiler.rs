@@ -23,6 +23,7 @@ pub enum TokenType {
     Return,
     Break,
     Continue,
+    Println,
 
     // Opérateurs arithmétiques
     Plus,
