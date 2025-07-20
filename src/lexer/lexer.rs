@@ -38,10 +38,17 @@ impl Lexer {
             let start_line = self.line;
             let start_column = self.column;
 
-            match self.scan_token() {
-                Ok(token_type) => {
+            // Essayer de scanner un token
+            let token_result = self.scan_token();
+
+            match token_result {
+                Ok(Some(token_type)) => {
                     let lexeme = self.get_lexeme();
                     tokens.push(Token::new(token_type, lexeme, start_line, start_column));
+                }
+                Ok(None) => {
+                    // Token ignoré (comme les commentaires), continuer
+                    continue;
                 }
                 Err(message) => {
                     return Err(CompilerError::LexError {
@@ -63,96 +70,97 @@ impl Lexer {
         Ok(tokens)
     }
 
-    fn scan_token(&mut self) -> std::result::Result<TokenType, String> {
+    fn scan_token(&mut self) -> std::result::Result<Option<TokenType>, String> {
         let c = self.advance();
 
         match c {
             // Délimiteurs simples
-            '(' => Ok(TokenType::LeftParen),
-            ')' => Ok(TokenType::RightParen),
-            '{' => Ok(TokenType::LeftBrace),
-            '}' => Ok(TokenType::RightBrace),
-            '[' => Ok(TokenType::LeftBracket),
-            ']' => Ok(TokenType::RightBracket),
-            ';' => Ok(TokenType::Semicolon),
-            ',' => Ok(TokenType::Comma),
-            '+' => Ok(TokenType::Plus),
-            '-' => Ok(TokenType::Minus),
-            '*' => Ok(TokenType::Multiply),
+            '(' => Ok(Some(TokenType::LeftParen)),
+            ')' => Ok(Some(TokenType::RightParen)),
+            '{' => Ok(Some(TokenType::LeftBrace)),
+            '}' => Ok(Some(TokenType::RightBrace)),
+            '[' => Ok(Some(TokenType::LeftBracket)),
+            ']' => Ok(Some(TokenType::RightBracket)),
+            ';' => Ok(Some(TokenType::Semicolon)),
+            ',' => Ok(Some(TokenType::Comma)),
+            '+' => Ok(Some(TokenType::Plus)),
+            '-' => Ok(Some(TokenType::Minus)),
+            '*' => Ok(Some(TokenType::Multiply)),
             '/' => {
                 if self.match_char('/') {
                     self.skip_line_comment();
-                    self.scan_token()
+                    Ok(None) // Retourne None pour ignorer le commentaire
                 } else if self.match_char('*') {
                     self.skip_block_comment()?;
-                    self.scan_token()
+                    Ok(None) // Retourne None pour ignorer le commentaire
                 } else {
-                    Ok(TokenType::Divide)
+                    Ok(Some(TokenType::Divide))
                 }
             }
-            '%' => Ok(TokenType::Modulo),
+            '%' => Ok(Some(TokenType::Modulo)),
 
             // Opérateurs avec potentiel double caractère
             '=' => {
                 if self.match_char('=') {
-                    Ok(TokenType::Equal)
+                    Ok(Some(TokenType::Equal))
                 } else {
-                    Ok(TokenType::Assign)
+                    Ok(Some(TokenType::Assign))
                 }
             }
             '!' => {
                 if self.match_char('=') {
-                    Ok(TokenType::NotEqual)
+                    Ok(Some(TokenType::NotEqual))
                 } else {
-                    Ok(TokenType::LogicalNot)
+                    Ok(Some(TokenType::LogicalNot))
                 }
             }
             '<' => {
                 if self.match_char('=') {
-                    Ok(TokenType::LessEqual)
+                    Ok(Some(TokenType::LessEqual))
                 } else {
-                    Ok(TokenType::LessThan)
+                    Ok(Some(TokenType::LessThan))
                 }
             }
             '>' => {
                 if self.match_char('=') {
-                    Ok(TokenType::GreaterEqual)
+                    Ok(Some(TokenType::GreaterEqual))
                 } else {
-                    Ok(TokenType::GreaterThan)
+                    Ok(Some(TokenType::GreaterThan))
                 }
             }
             '&' => {
                 if self.match_char('&') {
-                    Ok(TokenType::LogicalAnd)
+                    Ok(Some(TokenType::LogicalAnd))
                 } else {
                     Err("Caractère '&' inattendu".to_string())
                 }
             }
             '|' => {
                 if self.match_char('|') {
-                    Ok(TokenType::LogicalOr)
+                    Ok(Some(TokenType::LogicalOr))
                 } else {
                     Err("Caractère '|' inattendu".to_string())
                 }
             }
 
             // Chaînes de caractères
-            '"' => self.string(),
+            '"' => Ok(Some(self.string()?)),
 
             // Caractères
-            '\'' => self.char_literal(),
+            '\'' => Ok(Some(self.char_literal()?)),
 
             // Nombres
-            c if c.is_ascii_digit() => self.number(),
+            c if c.is_ascii_digit() => Ok(Some(self.number()?)),
 
             // Identificateurs et mots-clés
-            c if c.is_ascii_alphabetic() || c == '_' => self.identifier(),
+            c if c.is_ascii_alphabetic() || c == '_' => Ok(Some(self.identifier()?)),
 
             _ => Err(format!("Caractère inattendu: '{}'", c)),
         }
     }
 
     fn string(&mut self) -> std::result::Result<TokenType, String> {
+        // Le code reste identique
         let mut value = String::new();
 
         while self.peek() != '"' && !self.is_at_end() {
@@ -188,6 +196,7 @@ impl Lexer {
     }
 
     fn char_literal(&mut self) -> std::result::Result<TokenType, String> {
+        // Le code reste identique
         if self.is_at_end() {
             return Err("Caractère littéral non terminé".to_string());
         }
@@ -217,7 +226,7 @@ impl Lexer {
     }
 
     fn number(&mut self) -> std::result::Result<TokenType, String> {
-        // On a déjà consommé le premier chiffre dans scan_token
+        // Le code reste identique
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -241,7 +250,7 @@ impl Lexer {
     }
 
     fn identifier(&mut self) -> std::result::Result<TokenType, String> {
-        // On a déjà consommé le premier caractère dans scan_token
+        // Le code reste identique
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
@@ -265,7 +274,6 @@ impl Lexer {
 
         Ok(token_type)
     }
-
     fn skip_line_comment(&mut self) {
         while self.peek() != '\n' && !self.is_at_end() {
             self.advance();
@@ -509,55 +517,64 @@ mod tests {
         assert_eq!(tokens[4].token_type, TokenType::Eof);
     }
 
-    // #[test]
-    // fn test_character_escapes() {
-    //     let mut lexer = Lexer::new(r"'\n' '\t' '\r' '\\' '\'' '\"'"");
-    //     let tokens = lexer.tokenize().unwrap();
-    //
-    //     assert_eq!(tokens[0].token_type, TokenType::Char('\n'));
-    //     assert_eq!(tokens[1].token_type, TokenType::Char('\t'));
-    //     assert_eq!(tokens[2].token_type, TokenType::Char('\r'));
-    //     assert_eq!(tokens[3].token_type, TokenType::Char('\\'));
-    //     assert_eq!(tokens[4].token_type, TokenType::Char('\''));
-    //     assert_eq!(tokens[5].token_type, TokenType::Char('"'));
-    //     assert_eq!(tokens[6].token_type, TokenType::Eof);
-    // }
+    #[test]
+    fn test_line_comments() {
+        let mut lexer = Lexer::new("int x; // This is a comment\nfloat y;");
+        let tokens = lexer.tokenize().unwrap();
 
-    // #[test]
-    // fn test_line_comments() {
-    //     let mut lexer = Lexer::new("int x; // This is a comment\nfloat y;");
-    //     let tokens = lexer.tokenize().unwrap();
-    //
-    //     assert_eq!(tokens[0].token_type, TokenType::Int);
-    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
-    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
-    //     assert_eq!(tokens[3].token_type, TokenType::FloatType);
-    //     assert_eq!(tokens[4].token_type, TokenType::Identifier("y".to_string()));
-    //     assert_eq!(tokens[5].token_type, TokenType::Semicolon);
-    //     assert_eq!(tokens[6].token_type, TokenType::Eof);
-    // }
-    //
-    // #[test]
-    // fn test_block_comments() {
-    //     let mut lexer = Lexer::new("int /* this is a block comment */ x;");
-    //     let tokens = lexer.tokenize().unwrap();
-    //
-    //     assert_eq!(tokens[0].token_type, TokenType::Int);
-    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
-    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
-    //     assert_eq!(tokens[3].token_type, TokenType::Eof);
-    // }
-    //
-    // #[test]
-    // fn test_multiline_block_comment() {
-    //     let mut lexer = Lexer::new("int /*\n  multiline\n  comment\n*/ x;");
-    //     let tokens = lexer.tokenize().unwrap();
-    //
-    //     assert_eq!(tokens[0].token_type, TokenType::Int);
-    //     assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
-    //     assert_eq!(tokens[2].token_type, TokenType::Semicolon);
-    //     assert_eq!(tokens[3].token_type, TokenType::Eof);
-    // }
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::FloatType);
+        assert_eq!(tokens[4].token_type, TokenType::Identifier("y".to_string()));
+        assert_eq!(tokens[5].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[6].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_block_comments() {
+        let mut lexer = Lexer::new("int /* this is a block comment */ x;");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_multiline_block_comment() {
+        let mut lexer = Lexer::new("int /*\n  multiline\n  comment\n*/ x;");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_comment_at_end_of_file() {
+        let mut lexer = Lexer::new("int x; // comment at end");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
+
+    #[test]
+    fn test_nested_comments() {
+        // Test que les commentaires de ligne dans les commentaires de bloc sont ignorés
+        let mut lexer = Lexer::new("int /* block // line comment inside */ x;");
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Int);
+        assert_eq!(tokens[1].token_type, TokenType::Identifier("x".to_string()));
+        assert_eq!(tokens[2].token_type, TokenType::Semicolon);
+        assert_eq!(tokens[3].token_type, TokenType::Eof);
+    }
 
     #[test]
     fn test_whitespace_handling() {

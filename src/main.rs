@@ -11,6 +11,9 @@ fn main() {
             return x + 1;
         }
 
+        /* Commentaire bloc */
+        // Commentaire ligne
+
         return 0;
     }
     "#;
