@@ -68,12 +68,7 @@ impl Codegen {
                 Stmt::PrintStmt { format_string, .. } => {
                     if let Expr::String(s) = format_string {
                         if !self.data_strings.contains_key(s) {
-                            let label = match s.as_str() {
-                                "Hello, world!\n" => "str_hello".to_string(),
-                                s if s.contains("The integer is") => "str_fmt".to_string(),
-                                "x is positive.\n" => "str_pos".to_string(),
-                                _ => self.new_string_label(),
-                            };
+                            let label = self.new_string_label();
                             self.data_strings.insert(s.clone(), label);
                         }
                     }
