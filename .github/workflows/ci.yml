@@ -50,7 +50,7 @@ jobs:
     - name: Install NASM
       run: |
         choco install nasm
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
+        $env:PATH = "$env:PATH;C:\Program Files\NASM"
         nasm -v
     
     - name: Install GCC (MinGW)
