@@ -50,7 +50,7 @@ jobs:
     - name: Install NASM
       run: |
         choco install nasm
-        "C:\Program Files\NASM\nasm.exe" -v
+        & "C:\Program Files\NASM\nasm.exe" -v
     
     - name: Install GCC (MinGW)
       run: |
@@ -61,7 +61,7 @@ jobs:
       run: cargo run
     
     - name: Compile ASM to object file
-      run: "C:\Program Files\NASM\nasm.exe" -f win64 output.asm -o output.obj
+      run: '& "C:\Program Files\NASM\nasm.exe" -f win64 output.asm -o output.obj'
     
     - name: Link and create executable
       run: gcc -o output.exe output.obj -lmsvcrt
