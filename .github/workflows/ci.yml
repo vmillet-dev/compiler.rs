@@ -18,17 +18,12 @@ jobs:
       with:
         toolchain: "1.88.0"
     
-    - name: Install NASM
-      run: |
-        choco install nasm
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
-        nasm -v
-    
     - name: Build project
       run: cargo build --verbose
 
   test:
     runs-on: windows-latest
+    needs: build
     
     steps:
     - uses: actions/checkout@v4
@@ -37,12 +32,6 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: "1.88.0"
-    
-    - name: Install NASM
-      run: |
-        choco install nasm
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
-        nasm -v
     
     - name: Run tests
       run: cargo test --verbose
