@@ -2,6 +2,117 @@ use std::collections::HashMap;
 use crate::lexer::TokenType;
 use crate::parser::ast::{Expr, Stmt};
 
+#[derive(Debug, Clone)]
+pub enum Instruction {
+    Mov, Movsd, Movzx, Movq, Lea,
+    Push, Pop,
+    Add, Sub, Imul, Idiv, Inc, Neg, Cqo,
+    Cmp, Test,
+    Sete, Setne, Setl, Setle, Setg, Setge,
+    Jmp, Je, Jle, Call, Ret,
+    And, Or, Xor,
+}
+
+#[derive(Debug, Clone)]
+pub enum Register {
+    Rax, Rbp, Rsp, Rcx, Rdx, R8, R9,
+    Eax, Edx, R8d, R9d,
+    Al,
+    Xmm0, Xmm1, Xmm2, Xmm3,
+}
+
+#[derive(Debug, Clone)]
+pub enum Operand {
+    Register(Register),
+    Immediate(i64),
+    Memory { base: Register, offset: i32 },
+    Label(String),
+    String(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum Size {
+    Byte, Word, Dword, Qword,
+}
+
+impl Instruction {
+    fn to_string(&self) -> &'static str {
+        match self {
+            Instruction::Mov => "mov",
+            Instruction::Movsd => "movsd",
+            Instruction::Movzx => "movzx",
+            Instruction::Movq => "movq",
+            Instruction::Lea => "lea",
+            Instruction::Push => "push",
+            Instruction::Pop => "pop",
+            Instruction::Add => "add",
+            Instruction::Sub => "sub",
+            Instruction::Imul => "imul",
+            Instruction::Idiv => "idiv",
+            Instruction::Inc => "inc",
+            Instruction::Neg => "neg",
+            Instruction::Cqo => "cqo",
+            Instruction::Cmp => "cmp",
+            Instruction::Test => "test",
+            Instruction::Sete => "sete",
+            Instruction::Setne => "setne",
+            Instruction::Setl => "setl",
+            Instruction::Setle => "setle",
+            Instruction::Setg => "setg",
+            Instruction::Setge => "setge",
+            Instruction::Jmp => "jmp",
+            Instruction::Je => "je",
+            Instruction::Jle => "jle",
+            Instruction::Call => "call",
+            Instruction::Ret => "ret",
+            Instruction::And => "and",
+            Instruction::Or => "or",
+            Instruction::Xor => "xor",
+        }
+    }
+}
+
+impl Register {
+    fn to_string(&self) -> &'static str {
+        match self {
+            Register::Rax => "rax",
+            Register::Rbp => "rbp",
+            Register::Rsp => "rsp",
+            Register::Rcx => "rcx",
+            Register::Rdx => "rdx",
+            Register::R8 => "r8",
+            Register::R9 => "r9",
+            Register::Eax => "eax",
+            Register::Edx => "edx",
+            Register::R8d => "r8d",
+            Register::R9d => "r9d",
+            Register::Al => "al",
+            Register::Xmm0 => "xmm0",
+            Register::Xmm1 => "xmm1",
+            Register::Xmm2 => "xmm2",
+            Register::Xmm3 => "xmm3",
+        }
+    }
+}
+
+impl Operand {
+    fn to_string(&self) -> String {
+        match self {
+            Operand::Register(reg) => reg.to_string().to_string(),
+            Operand::Immediate(val) => val.to_string(),
+            Operand::Memory { base, offset } => {
+                if *offset >= 0 {
+                    format!("[{}+{}]", base.to_string(), offset)
+                } else {
+                    format!("[{}{}]", base.to_string(), offset)
+                }
+            },
+            Operand::Label(label) => label.clone(),
+            Operand::String(s) => s.clone(),
+        }
+    }
+}
+
 pub struct Codegen {
     label_count: usize,
     stack_offset: i32,
@@ -87,11 +198,17 @@ impl Codegen {
     fn generate_function(&mut self, name: &str, body: &[Stmt]) {
         self.emit_line(&format!("{}:", name));
         self.emit_comment("--- Prologue et allocation de la pile ---");
-        self.emit_line("    push    rbp");
-        self.emit_line("    mov     rbp, rsp");
+        self.emit_instruction(Instruction::Push, vec![Operand::Register(Register::Rbp)]);
+        self.emit_instruction(Instruction::Mov, vec![
+            Operand::Register(Register::Rbp), 
+            Operand::Register(Register::Rsp)
+        ]);
         self.emit_comment("On alloue 48 octets : ~16 pour nos variables + 32 pour le \"shadow space\"");
         self.emit_comment("IMPORTANT: Aligner la pile sur 16 octets avant les appels");
-        self.emit_line("    sub     rsp, 48");
+        self.emit_instruction(Instruction::Sub, vec![
+            Operand::Register(Register::Rsp), 
+            Operand::Immediate(48)
+        ]);
         self.emit_line("");
 
         self.stack_offset = 0;
@@ -102,9 +219,12 @@ impl Codegen {
         }
 
         self.emit_comment("--- Épilogue ---");
-        self.emit_line("    mov     rsp, rbp                ; Libère l'espace alloué sur la pile");
-        self.emit_line("    pop     rbp");
-        self.emit_line("    ret");
+        self.emit_instruction(Instruction::Mov, vec![
+            Operand::Register(Register::Rsp), 
+            Operand::Register(Register::Rbp)
+        ]);
+        self.emit_instruction(Instruction::Pop, vec![Operand::Register(Register::Rbp)]);
+        self.emit_instruction(Instruction::Ret, vec![]);
     }
 
     fn gen_stmt(&mut self, stmt: &Stmt) {
@@ -154,38 +274,62 @@ impl Codegen {
                     match var_type {
                         TokenType::Int => {
                             if let Expr::Integer(i) = expr {
-                                self.emit_line(&format!("    mov     dword [rbp{}], {}", stack_offset, i));
+                                self.emit_instruction_with_size(Instruction::Mov, Size::Dword, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Immediate(*i)
+                                ]);
                             } else {
                                 self.gen_expr(expr);
-                                self.emit_line(&format!("    mov     dword [rbp{}], eax", stack_offset));
+                                self.emit_instruction_with_size(Instruction::Mov, Size::Dword, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Register(Register::Eax)
+                                ]);
                             }
                         },
                         TokenType::FloatType => {
                             if let Expr::Float(_f) = expr {
                                 self.emit_comment("Charge la valeur depuis .data dans un registre XMM");
-                                self.emit_line(&format!("    movsd   xmm0, [val_{}]", name));
+                                self.emit_instruction(Instruction::Movsd, vec![
+                                    Operand::Register(Register::Xmm0),
+                                    Operand::String(format!("[val_{}]", name))
+                                ]);
                                 self.emit_comment("Stocke la valeur sur la pile");
-                                self.emit_line(&format!("    movsd   qword [rbp{}], xmm0", stack_offset));
+                                self.emit_instruction_with_size(Instruction::Movsd, Size::Qword, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Register(Register::Xmm0)
+                                ]);
                                 
                                 if !self.data_strings.contains_key(&format!("val_{}", name)) {
                                     self.data_strings.insert(format!("val_{}", name), format!("val_{}", name));
                                 }
                             } else {
                                 self.gen_expr(expr);
-                                self.emit_line(&format!("    movsd   qword [rbp{}], xmm0", stack_offset));
+                                self.emit_instruction_with_size(Instruction::Movsd, Size::Qword, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Register(Register::Xmm0)
+                                ]);
                             }
                         },
                         TokenType::CharType => {
                             if let Expr::Char(c) = expr {
-                                self.emit_line(&format!("    mov     byte [rbp{}], '{}'", stack_offset, c));
+                                self.emit_instruction_with_size(Instruction::Mov, Size::Byte, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::String(format!("'{}'", c))
+                                ]);
                             } else {
                                 self.gen_expr(expr);
-                                self.emit_line(&format!("    mov     byte [rbp{}], al", stack_offset));
+                                self.emit_instruction_with_size(Instruction::Mov, Size::Byte, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                         },
                         _ => {
                             self.gen_expr(expr);
-                            self.emit_line(&format!("    mov     qword [rbp{}], rax", stack_offset));
+                            self.emit_instruction_with_size(Instruction::Mov, Size::Qword, vec![
+                                Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                Operand::Register(Register::Rax)
+                            ]);
                         }
                     }
                 }
@@ -209,7 +353,7 @@ impl Codegen {
                     if let (Expr::Identifier(var_name), TokenType::Plus, Expr::Integer(1)) = (left.as_ref(), operator, right.as_ref()) {
                         if let Some(&offset) = self.locals.get(var_name) {
                             self.emit_line(&format!("    mov     eax, [rbp{}]            ; Recharge {} dans eax", offset, var_name));
-                            self.emit_line("    inc     eax                     ; Ajoute 1. Le résultat est maintenant dans eax");
+                            self.emit_instruction(Instruction::Inc, vec![Operand::Register(Register::Eax)]);
                         } else {
                             self.gen_expr(expr);
                             self.emit_line("    ; result in eax");
@@ -226,7 +370,10 @@ impl Codegen {
 
             Stmt::Return(None) => {
                 self.emit_comment("--- return 0; ---");
-                self.emit_line("    xor eax, eax");
+                self.emit_instruction(Instruction::Xor, vec![
+                    Operand::Register(Register::Eax), 
+                    Operand::Register(Register::Eax)
+                ]);
             }
 
             Stmt::ExprStmt(expr) => {
@@ -264,30 +411,42 @@ impl Codegen {
                     if let (Expr::Identifier(var_name), TokenType::GreaterThan, Expr::Integer(val)) = (left.as_ref(), operator, right.as_ref()) {
                         if let Some(&offset) = self.locals.get(var_name) {
                             self.emit_line(&format!("    mov     eax, [rbp{}]            ; Charge {} dans eax pour la comparaison", offset, var_name));
-                            self.emit_line(&format!("    cmp     eax, {}", val));
-                            self.emit_line("    jle     .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                            self.emit_instruction(Instruction::Cmp, vec![
+                                Operand::Register(Register::Eax), 
+                                Operand::Immediate(*val)
+                            ]);
+                            self.emit_instruction(Instruction::Jle, vec![Operand::Label(".else_block".to_string())]);
                         }
                     } else {
                         self.gen_expr(condition);
-                        self.emit_line("    cmp     eax, 0");
-                        self.emit_line("    je      .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                        self.emit_instruction(Instruction::Cmp, vec![
+                            Operand::Register(Register::Eax), 
+                            Operand::Immediate(0)
+                        ]);
+                        self.emit_instruction(Instruction::Je, vec![Operand::Label(".else_block".to_string())]);
                     }
                 } else {
                     self.gen_expr(condition);
-                    self.emit_line("    cmp     eax, 0");
-                    self.emit_line("    je      .else_block             ; Saute au bloc \"else\" si la condition est fausse");
+                    self.emit_instruction(Instruction::Cmp, vec![
+                        Operand::Register(Register::Eax), 
+                        Operand::Immediate(0)
+                    ]);
+                    self.emit_instruction(Instruction::Je, vec![Operand::Label(".else_block".to_string())]);
                 }
                 self.emit_line("");
                 self.emit_comment("--- Bloc du \"if\" (si x > 0) ---");
                 for stmt in then_branch {
                     self.gen_stmt(stmt);
                 }
-                self.emit_line("    jmp     .end_program            ; Saute directement à la fin du programme");
+                self.emit_instruction(Instruction::Jmp, vec![Operand::Label(".end_program".to_string())]);
                 self.emit_line("");
                 self.emit_line(".else_block:");
                 self.emit_comment("--- return 0; ---");
                 self.emit_comment("Ce bloc est exécuté si x <= 0");
-                self.emit_line("    xor     eax, eax                ; Met le code de retour à 0");
+                self.emit_instruction(Instruction::Xor, vec![
+                    Operand::Register(Register::Eax), 
+                    Operand::Register(Register::Eax)
+                ]);
                 self.emit_line("");
                 self.emit_line(".end_program:");
             }
@@ -316,15 +475,24 @@ impl Codegen {
                     
                     self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
                     self.emit_line("    and     rsp, ~15            ; Force l'alignement sur 16 octets");
-                    self.emit_line("    sub     rsp, 32             ; Shadow space pour l'appel");
+                    self.emit_instruction(Instruction::Sub, vec![
+                        Operand::Register(Register::Rsp), 
+                        Operand::Immediate(32)
+                    ]);
                     self.emit_line("");
 
                     if args.is_empty() {
                         // Simple printf with just format string
-                        self.emit_line(&format!("    mov     rcx, {}", format_label));
-                        self.emit_line("    call    printf");
+                        self.emit_instruction(Instruction::Mov, vec![
+                            Operand::Register(Register::Rcx), 
+                            Operand::Label(format_label)
+                        ]);
+                        self.emit_instruction(Instruction::Call, vec![Operand::Label("printf".to_string())]);
                     } else {
-                        self.emit_line(&format!("    mov     rcx, {}            ; Arg 1: l'adresse du format (dans RCX)", format_label));
+                        self.emit_instruction(Instruction::Mov, vec![
+                            Operand::Register(Register::Rcx), 
+                            Operand::Label(format_label)
+                        ]);
                         
                         // Handle printf arguments generically
                         let arg_registers = ["edx", "r8d", "r9d"]; // Windows x64 calling convention
@@ -344,8 +512,9 @@ impl Codegen {
                                             i + 2, xmm_registers[i].to_uppercase(), arg_registers[i].to_uppercase()));
                                         self.emit_line(&format!("    movsd   {}, [rbp{}]          ; Charge le flottant dans {}", 
                                             xmm_registers[i], offset, xmm_registers[i].to_uppercase()));
+                                        let reg_64 = if arg_registers[i] == "r8d" { "r8" } else { "rdx" };
                                         self.emit_line(&format!("    movq    {}, {}                ; ET copie la même valeur dans {}", 
-                                            arg_registers[i].replace("d", ""), xmm_registers[i], arg_registers[i].to_uppercase()));
+                                            reg_64, xmm_registers[i], arg_registers[i].to_uppercase()));
                                     } else if i == 2 { // Third arg - likely char
                                         self.emit_line("");
                                         self.emit_comment(&format!("Le {}ème argument va dans {}", i + 2, arg_registers[i].to_uppercase()));
@@ -357,11 +526,14 @@ impl Codegen {
                         }
                         
                         self.emit_line("");
-                        self.emit_line("    call    printf");
+                        self.emit_instruction(Instruction::Call, vec![Operand::Label("printf".to_string())]);
                     }
 
                     self.emit_line("");
-                    self.emit_line("    add     rsp, 32             ; Nettoie le shadow space")
+                    self.emit_instruction(Instruction::Add, vec![
+                        Operand::Register(Register::Rsp), 
+                        Operand::Immediate(32)
+                    ]);
 
                 } else {
                     self.emit_line(&format!("    ; printf format string is not a string literal: {:?}", format_string));
@@ -376,7 +548,10 @@ impl Codegen {
     fn gen_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Integer(i) => {
-                self.emit_line(&format!("    mov rax, {}", i));
+                self.emit_instruction(Instruction::Mov, vec![
+                    Operand::Register(Register::Rax), 
+                    Operand::Immediate(*i)
+                ]);
             }
             Expr::Float(f) => {
                 // Pour les floats, nous devons les gérer correctement pour printf
@@ -384,22 +559,34 @@ impl Codegen {
                 // - Stocker le float dans la section .data
                 // - Charger sa valeur dans un registre XMM pour printf
                 let float_bits = f.to_bits();
-                self.emit_line(&format!("    mov rax, {}", float_bits));
+                self.emit_instruction(Instruction::Mov, vec![
+                    Operand::Register(Register::Rax), 
+                    Operand::Immediate(float_bits as i64)
+                ]);
                 // Pour printf avec %f, nous devrions utiliser movq xmm0, rax
                 // mais cela nécessiterait de suivre quel registre XMM utiliser
                 // Pour l'instant, gardons la représentation en bits
             }
             Expr::Char(c) => {
-                self.emit_line(&format!("    mov rax, {}", *c as u8)); // Move ASCII value
+                self.emit_instruction(Instruction::Mov, vec![
+                    Operand::Register(Register::Rax), 
+                    Operand::Immediate(*c as i64)
+                ]);
             }
             Expr::String(s) => {
                 // CORRECTION: Utiliser RIP-relative addressing pour les chaînes
                 if let Some(label) = self.data_strings.get(s) {
-                    self.emit_line(&format!("    lea rax, [rel {}]", label));
+                    self.emit_instruction(Instruction::Lea, vec![
+                        Operand::Register(Register::Rax), 
+                        Operand::String(format!("[rel {}]", label))
+                    ]);
                 } else {
                     // This should not happen if collect_format_strings is called correctly
                     self.emit_line(&format!("    ; String literal '{}' not found in data section", s));
-                    self.emit_line("    mov rax, 0"); // Default to null pointer
+                    self.emit_instruction(Instruction::Mov, vec![
+                        Operand::Register(Register::Rax), 
+                        Operand::Immediate(0)
+                    ]);
                 }
             }
             Expr::Identifier(name) => {
@@ -407,10 +594,16 @@ impl Codegen {
                     // Load value from stack into RAX
                     // Need to consider variable size (BYTE, WORD, DWORD, QWORD)
                     // For now, assume QWORD for all identifiers for simplicity.
-                    self.emit_line(&format!("    mov rax, [rbp{}]", offset));
+                    self.emit_instruction(Instruction::Mov, vec![
+                        Operand::Register(Register::Rax), 
+                        Operand::Memory { base: Register::Rbp, offset }
+                    ]);
                 } else {
                     self.emit_line(&format!("    ; unknown variable '{}'", name));
-                    self.emit_line("    mov rax, 0"); // Default to 0 if variable not found
+                    self.emit_instruction(Instruction::Mov, vec![
+                        Operand::Register(Register::Rax), 
+                        Operand::Immediate(0)
+                    ]);
                 }
             }
 
@@ -418,73 +611,145 @@ impl Codegen {
                 match operator {
                     TokenType::LogicalNot => { // Unary '!'
                         self.gen_expr(right); // Evaluate the operand
-                        self.emit_line("    cmp rax, 0"); // Compare with 0
-                        self.emit_line("    sete al");    // Set AL to 1 if RAX == 0 (true for logical NOT)
-                        self.emit_line("    movzx rax, al"); // Zero-extend AL to RAX
+                        self.emit_instruction(Instruction::Cmp, vec![
+                            Operand::Register(Register::Rax), 
+                            Operand::Immediate(0)
+                        ]);
+                        self.emit_instruction(Instruction::Sete, vec![Operand::Register(Register::Al)]);
+                        self.emit_instruction(Instruction::Movzx, vec![
+                            Operand::Register(Register::Rax), 
+                            Operand::Register(Register::Al)
+                        ]);
                     }
                     TokenType::Minus if matches!(**left, Expr::Integer(0)) => { // Unary '-' (placeholder left operand)
                         self.gen_expr(right); // Evaluate the operand
-                        self.emit_line("    neg rax"); // Negate RAX
+                        self.emit_instruction(Instruction::Neg, vec![Operand::Register(Register::Rax)]);
                     }
                     _ => { // Binary operators
                         self.gen_expr(right);
-                        self.emit_line("    push rax");
+                        self.emit_instruction(Instruction::Push, vec![Operand::Register(Register::Rax)]);
                         self.gen_expr(left);
-                        self.emit_line("    pop rcx");
+                        self.emit_instruction(Instruction::Pop, vec![Operand::Register(Register::Rcx)]);
 
                         match operator {
-                            TokenType::Plus => self.emit_line("    add rax, rcx"),
-                            TokenType::Minus => self.emit_line("    sub rax, rcx"),
-                            TokenType::Multiply => self.emit_line("    imul rax, rcx"),
+                            TokenType::Plus => self.emit_instruction(Instruction::Add, vec![
+                                Operand::Register(Register::Rax), 
+                                Operand::Register(Register::Rcx)
+                            ]),
+                            TokenType::Minus => self.emit_instruction(Instruction::Sub, vec![
+                                Operand::Register(Register::Rax), 
+                                Operand::Register(Register::Rcx)
+                            ]),
+                            TokenType::Multiply => self.emit_instruction(Instruction::Imul, vec![
+                                Operand::Register(Register::Rax), 
+                                Operand::Register(Register::Rcx)
+                            ]),
                             TokenType::Divide => {
-                                self.emit_line("    cqo");
-                                self.emit_line("    idiv rcx");
+                                self.emit_instruction(Instruction::Cqo, vec![]);
+                                self.emit_instruction(Instruction::Idiv, vec![Operand::Register(Register::Rcx)]);
                             }
                             TokenType::Equal => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    sete al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Sete, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::NotEqual => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    setne al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Setne, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::LessThan => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    setl al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Setl, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::LessEqual => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    setle al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Setle, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::GreaterThan => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    setg al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Setg, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::GreaterEqual => {
-                                self.emit_line("    cmp rax, rcx");
-                                self.emit_line("    setge al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Setge, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::LogicalAnd => {
-                                self.emit_line("    and rax, rcx");
-                                self.emit_line("    cmp rax, 0"); // If both non-zero, result is non-zero
-                                self.emit_line("    setne al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::And, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Immediate(0)
+                                ]);
+                                self.emit_instruction(Instruction::Setne, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             TokenType::LogicalOr => {
-                                self.emit_line("    or rax, rcx");
-                                self.emit_line("    cmp rax, 0"); // If either non-zero, result is non-zero
-                                self.emit_line("    setne al");
-                                self.emit_line("    movzx rax, al");
+                                self.emit_instruction(Instruction::Or, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Rcx)
+                                ]);
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Immediate(0)
+                                ]);
+                                self.emit_instruction(Instruction::Setne, vec![Operand::Register(Register::Al)]);
+                                self.emit_instruction(Instruction::Movzx, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Register(Register::Al)
+                                ]);
                             }
                             _ => {
                                 self.emit_line("    ; unsupported binary op");
-                                self.emit_line("    mov rax, 0"); // Default value
+                                self.emit_instruction(Instruction::Mov, vec![
+                                    Operand::Register(Register::Rax), 
+                                    Operand::Immediate(0)
+                                ]);
                             }
                         }
                     }
@@ -495,13 +760,54 @@ impl Codegen {
                 // For now, we'll treat it as unsupported as printf is handled by Stmt::PrintStmt.
                 // A full compiler would need to resolve `callee` and pass `arguments`.
                 self.emit_line(&format!("    ; unsupported general function call expression: {:?}", callee));
-                self.emit_line("    mov rax, 0");
+                self.emit_instruction(Instruction::Mov, vec![
+                    Operand::Register(Register::Rax), 
+                    Operand::Immediate(0)
+                ]);
             }
             _ => {
                 self.emit_line(&format!("    ; unsupported expr {:?}", expr));
-                self.emit_line("    mov rax, 0");
+                self.emit_instruction(Instruction::Mov, vec![
+                    Operand::Register(Register::Rax), 
+                    Operand::Immediate(0)
+                ]);
             }
         }
+    }
+
+    fn emit_instruction(&mut self, instruction: Instruction, operands: Vec<Operand>) {
+        let instr_str = instruction.to_string();
+        if operands.is_empty() {
+            self.emit_line(&format!("    {}", instr_str));
+        } else {
+            let operands_str = operands.iter()
+                .map(|op| op.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.emit_line(&format!("    {} {}", instr_str, operands_str));
+        }
+    }
+
+    fn emit_instruction_with_size(&mut self, instruction: Instruction, size: Size, operands: Vec<Operand>) {
+        let size_str = match size {
+            Size::Byte => "byte",
+            Size::Word => "word", 
+            Size::Dword => "dword",
+            Size::Qword => "qword",
+        };
+        let instr_str = instruction.to_string();
+        let operands_str = operands.iter()
+            .enumerate()
+            .map(|(i, op)| {
+                if i == 0 && matches!(op, Operand::Memory { .. }) {
+                    format!("{} {}", size_str, op.to_string())
+                } else {
+                    op.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.emit_line(&format!("    {} {}", instr_str, operands_str));
     }
 
     fn emit_line(&mut self, line: &str) {
