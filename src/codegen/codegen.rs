@@ -153,9 +153,6 @@ impl Codegen {
         }
         
         self.emit_line("");
-        self.emit_comment("Constante pour le flottant. On le stocke en double précision (dq)");
-        self.emit_comment("car printf promeut les float en double pour les arguments.");
-        self.emit_line("    val_y:     dq 3.14");
 
         self.emit_comment("--- Text section for executable code ---");
         self.emit_line("section .text");
@@ -287,21 +284,20 @@ impl Codegen {
                             }
                         },
                         TokenType::FloatType => {
-                            if let Expr::Float(_f) = expr {
-                                self.emit_comment("Charge la valeur depuis .data dans un registre XMM");
-                                self.emit_instruction(Instruction::Movsd, vec![
-                                    Operand::Register(Register::Xmm0),
-                                    Operand::String(format!("[val_{}]", name))
+                            if let Expr::Float(f) = expr {
+                                let float_bits = f.to_bits();
+                                self.emit_instruction(Instruction::Mov, vec![
+                                    Operand::Register(Register::Rax),
+                                    Operand::Immediate(float_bits as i64)
                                 ]);
-                                self.emit_comment("Stocke la valeur sur la pile");
+                                self.emit_instruction(Instruction::Movq, vec![
+                                    Operand::Register(Register::Xmm0),
+                                    Operand::Register(Register::Rax)
+                                ]);
                                 self.emit_instruction_with_size(Instruction::Movsd, Size::Qword, vec![
                                     Operand::Memory { base: Register::Rbp, offset: stack_offset },
                                     Operand::Register(Register::Xmm0)
                                 ]);
-                                
-                                if !self.data_strings.contains_key(&format!("val_{}", name)) {
-                                    self.data_strings.insert(format!("val_{}", name), format!("val_{}", name));
-                                }
                             } else {
                                 self.gen_expr(expr);
                                 self.emit_instruction_with_size(Instruction::Movsd, Size::Qword, vec![
