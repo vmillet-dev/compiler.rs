@@ -1,7 +1,7 @@
 use crate::lexer::TokenType;
 
 // AST definitions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Integer(i64),
     Float(f64),
@@ -19,7 +19,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Stmt {
     ExprStmt(Expr),
     VarDecl {
