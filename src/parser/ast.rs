@@ -13,9 +13,17 @@ pub enum Expr {
         operator: TokenType,
         right: Box<Expr>,
     },
+    Unary {
+        operator: TokenType,
+        operand: Box<Expr>,
+    },
     Call {
         callee: Box<Expr>,
         arguments: Vec<Expr>,
+    },
+    Assignment {
+        name: String,
+        value: Box<Expr>,
     },
 }
 

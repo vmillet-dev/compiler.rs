@@ -1,0 +1,94 @@
+bits 64
+default rel
+global main
+extern printf
+
+section .data
+    ; Les chaînes de caractères nécessaires pour les appels printf
+    str_hello: db "Hello, world!", 10, 0
+    str_fmt:   db "The integer is %d, the float is %.2f, and the char is %c.", 10, 0
+    str_pos:   db "x is positive.", 10, 0
+
+    ; Constante pour le flottant. On le stocke en double précision (dq)
+    ; car printf promeut les float en double pour les arguments.
+    val_y:     dq 3.14
+
+section .text
+main:
+    ; --- Prologue et allocation de la pile ---
+    push    rbp
+    mov     rbp, rsp
+    ; On alloue 48 octets : ~16 pour nos variables + 32 pour le "shadow space"
+    ; IMPORTANT: Aligner la pile sur 16 octets avant les appels
+    sub     rsp, 48
+
+    ; --- int x = 42; ---
+    mov     dword [rbp-4], 42
+
+    ; --- float y = 3.14; ---
+    movsd   xmm0, [val_y]       ; Charge la valeur depuis .data dans un registre XMM
+    movsd   qword [rbp-16], xmm0  ; Stocke la valeur sur la pile
+
+    ; --- char c = 'a'; ---
+    mov     byte [rbp-20], 'a'
+
+    ; --- println("Hello, world!\\n"); ---
+    ; Aligner la pile avant l'appel (RSP doit être multiple de 16)
+    and     rsp, ~15            ; Force l'alignement sur 16 octets
+    sub     rsp, 32             ; Shadow space pour l'appel
+
+    mov     rcx, str_hello
+    call    printf
+
+    add     rsp, 32             ; Nettoie le shadow space
+
+    ; --- println("...", x, y, c); ---
+    ; Réaligner la pile
+    and     rsp, ~15            ; Force l'alignement sur 16 octets
+    sub     rsp, 32             ; Shadow space pour l'appel
+
+    mov     rcx, str_fmt            ; Arg 1: l'adresse du format (dans RCX)
+    mov     edx, [rbp-4]            ; Arg 2: la valeur de x (dans RDX)
+
+    ; Pour le 3ème argument (flottant), il faut le mettre dans XMM2 ET dans R8
+    movsd   xmm2, [rbp-16]          ; Charge le flottant dans XMM2
+    movq    r8, xmm2                ; ET copie la même valeur dans R8
+
+    ; Le 4ème argument va dans R9
+    movzx   r9d, byte [rbp-20]      ; Arg 4: la valeur de c (dans R9D)
+
+    call    printf
+
+    add     rsp, 32             ; Nettoie le shadow space
+
+    ; --- if (x > 0) ---
+    mov     eax, [rbp-4]            ; Charge x dans eax pour la comparaison
+    cmp     eax, 0
+    jle     .else_block             ; Saute au bloc "else" si x est inférieur ou égal à 0
+
+    ; --- Bloc du "if" (si x > 0) ---
+    ; println("x is positive.\\n");
+    ; Réaligner la pile
+    and     rsp, ~15            ; Force l'alignement sur 16 octets
+    sub     rsp, 32             ; Shadow space pour l'appel
+
+    mov     rcx, str_pos
+    call    printf
+
+    add     rsp, 32             ; Nettoie le shadow space
+
+    ; return x + 1;
+    mov     eax, [rbp-4]            ; Recharge x dans eax
+    inc     eax                     ; Ajoute 1. Le résultat est maintenant dans eax
+    jmp     .end_program            ; Saute directement à la fin du programme
+
+.else_block:
+    ; --- return 0; ---
+    ; Ce bloc est exécuté si x <= 0
+    xor     eax, eax                ; Met le code de retour à 0
+
+.end_program:
+    ; --- Épilogue ---
+    mov     rsp, rbp                ; Libère l'espace alloué sur la pile
+    pop     rbp
+    ret

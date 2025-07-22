@@ -7,7 +7,11 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(mut tokens: Vec<Token>) -> Self {
+        // Ensure the token vector always ends with EOF to prevent bounds issues
+        if tokens.is_empty() || tokens.last().unwrap().token_type != TokenType::Eof {
+            tokens.push(Token::new(TokenType::Eof, String::new(), 1, 1));
+        }
         Parser { tokens, current: 0 }
     }
 
@@ -17,6 +21,10 @@ impl Parser {
             if let Some(func) = self.function() {
                 stmts.push(func);
             } else {
+                // Report error for unparseable top-level constructs
+                eprintln!("Erreur d'analyse: Construction de niveau supérieur non reconnue à {}:{}", 
+                         self.peek().line, self.peek().column);
+                // Skip the problematic token to continue parsing
                 self.advance();
             }
         }
@@ -86,15 +94,23 @@ impl Parser {
             };
 
             let mut args = Vec::new();
-            // Si le prochain token n'est pas ')' (fin des arguments), on s'attend à une virgule et d'autres arguments
+            // Parse additional arguments after the format string
             while !self.check(&TokenType::RightParen) && !self.is_at_end() {
-                if self.check(&TokenType::Comma) { // Si on a une virgule, on la consomme
-                    self.advance();
-                } else if !args.is_empty() { // Si ce n'est pas la première itération et pas de virgule, c'est une erreur
+                // Expect a comma before each additional argument
+                if !self.match_token(&TokenType::Comma) {
                     eprintln!("Erreur d'analyse: Virgule attendue entre les arguments de printf à {}:{}", self.peek().line, self.peek().column);
                     return None;
                 }
-                args.push(self.expression()?);
+                
+                // Parse the argument expression
+                if let Some(expr) = self.expression() {
+                    args.push(expr);
+                } else {
+                    eprintln!("Erreur d'analyse: Expression attendue après la virgule à {}:{}", self.peek().line, self.peek().column);
+                    // Skip the problematic token to avoid infinite loop
+                    self.advance();
+                    return None;
+                }
             }
 
             self.consume(TokenType::RightParen)?;
@@ -119,7 +135,26 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Option<Expr> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Option<Expr> {
+        let expr = self.equality()?;
+
+        // Check if this is an assignment (identifier = expression)
+        if let Expr::Identifier(name) = expr {
+            if self.match_token(&TokenType::Assign) {
+                let value = self.assignment()?; // Right-associative
+                return Some(Expr::Assignment {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+            // If not an assignment, return the identifier as-is
+            return Some(Expr::Identifier(name));
+        }
+
+        Some(expr)
     }
 
     fn equality(&mut self) -> Option<Expr> {
@@ -180,16 +215,15 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Option<Expr> {
-        // Ajout de l'opérateur unaire '!' pour la négation logique
+        // Handle unary operators: '!' for logical negation and '-' for arithmetic negation
         if let Some(op) = self.match_any(&[TokenType::LogicalNot, TokenType::Minus]) {
-            let right = self.unary()?; // Récursif pour gérer !!x ou -(-x)
-            return Some(Expr::Binary {
-                left: Box::new(Expr::Integer(0)), // Un placeholder, car l'opérateur unaire n'a pas de 'gauche'
+            let operand = self.unary()?; // Recursive to handle !!x or -(-x)
+            return Some(Expr::Unary {
                 operator: op,
-                right: Box::new(right),
+                operand: Box::new(operand),
             });
         }
-        self.call() // Passer à la gestion des appels de fonction
+        self.call() // Move to function call handling
     }
 
     fn call(&mut self) -> Option<Expr> {
@@ -292,11 +326,16 @@ impl Parser {
     }
 
     fn peek(&self) -> &Token {
-        &self.tokens[self.current]
+        if self.current >= self.tokens.len() {
+            // Return the last token (should be EOF) if we're past the end
+            &self.tokens[self.tokens.len() - 1]
+        } else {
+            &self.tokens[self.current]
+        }
     }
 
     fn is_at_end(&self) -> bool {
-        self.peek().token_type == TokenType::Eof
+        self.current >= self.tokens.len() || self.peek().token_type == TokenType::Eof
     }
 }
 
@@ -386,7 +425,7 @@ mod tests {
         ];
 
         let mut parser = Parser::new(tokens);
-        let result = parser.parse();
+        let _result = parser.parse();
         
         // Since this is not inside a function, the parser won't recognize it as a top-level statement
         // Let's test the statement parsing directly
@@ -588,6 +627,53 @@ mod tests {
         let mut parser = Parser::new(tokens);
         let result = parser.statement();
         assert!(result.is_none(), "Should fail to parse invalid syntax");
+    }
+
+    #[test]
+    fn test_parse_unary_expressions() {
+        // Test parsing: "-42"
+        let tokens = vec![
+            create_token(TokenType::Minus, "-"),
+            create_token(TokenType::Integer(42), "42"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(expr) = parser.expression() {
+            match expr {
+                Expr::Unary { operator, operand } => {
+                    assert_eq!(operator, TokenType::Minus);
+                    assert_eq!(*operand, Expr::Integer(42));
+                }
+                _ => panic!("Expected unary expression"),
+            }
+        } else {
+            panic!("Failed to parse unary expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_assignment_expressions() {
+        // Test parsing: "x = 42"
+        let tokens = vec![
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::Assign, "="),
+            create_token(TokenType::Integer(42), "42"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(expr) = parser.expression() {
+            match expr {
+                Expr::Assignment { name, value } => {
+                    assert_eq!(name, "x");
+                    assert_eq!(*value, Expr::Integer(42));
+                }
+                _ => panic!("Expected assignment expression"),
+            }
+        } else {
+            panic!("Failed to parse assignment expression");
+        }
     }
 
     #[test]
