@@ -13,7 +13,6 @@ fn main() {
         println("The integer is %d, the float is %f, and the char is %c.\n", x, y, c);
 
         if (x > 0) {
-            println(x + 1);
             println("x is positive.\n");
             return x + 1;
         }
