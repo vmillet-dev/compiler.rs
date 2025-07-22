@@ -2,4 +2,5 @@
 /.idea/
 *.exe
 *.o
+*.obj
 *asm*

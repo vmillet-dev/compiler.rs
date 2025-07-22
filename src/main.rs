@@ -24,19 +24,17 @@ fn main() {
         println!("No file provided, using default code...");
         r#"
     int main() {
-        int x = 42;
-        float y = 3.14;
-        char c = 'a';
-        println("Hello, world!\n");
-        println("The integer is %d, the float is %f, and the char is %c.\n", x, y, c);
+        int number = 42;
+        float pi = 3.14159;
+        char letter = 'A';
 
-        if (x > 0) {
-            println("x is positive.\n");
-            return x + 1;
-        }
+        println("Testing simple println with different types:");
+        println(number);
+        println(pi);
+        println(letter);
 
-        /* Commentaire bloc */
-        // Commentaire ligne
+        println("Testing with expressions:");
+        println(number * 2);
 
         return 0;
     }

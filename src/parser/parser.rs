@@ -83,39 +83,56 @@ impl Parser {
         if self.match_token(&TokenType::Println) {
             self.consume(TokenType::LeftParen)?;
 
-            // Le premier argument doit être la chaîne de format
-            let format_string_expr = self.expression()?;
-            let format_string = match format_string_expr {
-                Expr::String(_) => format_string_expr,
-                _ => {
-                    eprintln!("Erreur d'analyse: Le premier argument de printf doit être une chaîne de caractères à {}:{}", self.peek().line, self.peek().column);
-                    return None; // Ou renvoyer une erreur plus spécifique
-                }
-            };
+            // Parse the first expression
+            let first_expr = self.expression()?;
+            
+            // Check if this is a format string (string literal) or a simple expression
+            match &first_expr {
+                Expr::String(_) => {
+                    // Format string case: println("format", args...)
+                    let mut args = Vec::new();
+                    // Parse additional arguments after the format string
+                    while !self.check(&TokenType::RightParen) && !self.is_at_end() {
+                        // Expect a comma before each additional argument
+                        if !self.match_token(&TokenType::Comma) {
+                            eprintln!("Erreur d'analyse: Virgule attendue entre les arguments de printf à {}:{}", self.peek().line, self.peek().column);
+                            return None;
+                        }
+                        
+                        // Parse the argument expression
+                        if let Some(expr) = self.expression() {
+                            args.push(expr);
+                        } else {
+                            eprintln!("Erreur d'analyse: Expression attendue après la virgule à {}:{}", self.peek().line, self.peek().column);
+                            // Skip the problematic token to avoid infinite loop
+                            self.advance();
+                            return None;
+                        }
+                    }
 
-            let mut args = Vec::new();
-            // Parse additional arguments after the format string
-            while !self.check(&TokenType::RightParen) && !self.is_at_end() {
-                // Expect a comma before each additional argument
-                if !self.match_token(&TokenType::Comma) {
-                    eprintln!("Erreur d'analyse: Virgule attendue entre les arguments de printf à {}:{}", self.peek().line, self.peek().column);
-                    return None;
+                    self.consume(TokenType::RightParen)?;
+                    self.consume(TokenType::Semicolon)?;
+                    return Some(Stmt::PrintStmt { format_string: first_expr, args });
                 }
-                
-                // Parse the argument expression
-                if let Some(expr) = self.expression() {
-                    args.push(expr);
-                } else {
-                    eprintln!("Erreur d'analyse: Expression attendue après la virgule à {}:{}", self.peek().line, self.peek().column);
-                    // Skip the problematic token to avoid infinite loop
-                    self.advance();
-                    return None;
+                _ => {
+                    // Simple expression case: println(expr)
+                    // Check that there are no additional arguments
+                    if self.check(&TokenType::Comma) {
+                        eprintln!("Erreur d'analyse: println avec expression simple ne peut pas avoir d'arguments supplémentaires à {}:{}", self.peek().line, self.peek().column);
+                        return None;
+                    }
+                    
+                    self.consume(TokenType::RightParen)?;
+                    self.consume(TokenType::Semicolon)?;
+                    
+                    // Create a simple print statement with the expression as a single argument
+                    // We'll use an empty string as format_string to indicate this is a simple print
+                    return Some(Stmt::PrintStmt { 
+                        format_string: Expr::String(String::new()), 
+                        args: vec![first_expr] 
+                    });
                 }
             }
-
-            self.consume(TokenType::RightParen)?;
-            self.consume(TokenType::Semicolon)?;
-            return Some(Stmt::PrintStmt { format_string, args });
         }
 
         if let Some(var_type) = self.match_any_type() {

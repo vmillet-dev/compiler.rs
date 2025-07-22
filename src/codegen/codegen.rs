@@ -117,6 +117,7 @@ pub struct Codegen {
     label_count: usize,
     stack_offset: i32,
     locals: HashMap<String, i32>,
+    local_types: HashMap<String, TokenType>, // Track variable types
     output: String,
     data_strings: HashMap<String, String>, // To store format strings and their labels
     string_label_count: usize, // For unique string labels
@@ -128,6 +129,7 @@ impl Codegen {
             label_count: 0,
             stack_offset: 0,
             locals: HashMap::new(),
+            local_types: HashMap::new(),
             output: String::new(),
             data_strings: HashMap::new(),
             string_label_count: 0,
@@ -141,6 +143,9 @@ impl Codegen {
         self.emit_line("extern printf");
         self.emit_line("");
 
+        // First pass: collect variable types
+        self.collect_variable_types(ast);
+        // Second pass: collect format strings with type information
         self.collect_format_strings(ast);
 
         self.emit_comment("--- Data section for string literals ---");
@@ -167,17 +172,66 @@ impl Codegen {
     }
 
     // Helper to collect format strings before generating code
+    fn collect_variable_types(&mut self, ast: &[Stmt]) {
+        for stmt in ast {
+            match stmt {
+                Stmt::Function { body, .. } => {
+                    self.collect_variable_types(body);
+                }
+                Stmt::VarDecl { var_type, name, .. } => {
+                    // Store variable type for later use
+                    self.local_types.insert(name.clone(), var_type.clone());
+                }
+                Stmt::If { then_branch, .. } => {
+                    self.collect_variable_types(then_branch);
+                }
+                Stmt::Block(stmts) => {
+                    self.collect_variable_types(stmts);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn collect_format_strings(&mut self, ast: &[Stmt]) {
         for stmt in ast {
             match stmt {
                 Stmt::Function { body, .. } => {
                     self.collect_format_strings(body);
                 }
-                Stmt::PrintStmt { format_string, .. } => {
+                Stmt::PrintStmt { format_string, args } => {
                     if let Expr::String(s) = format_string {
-                        if !self.data_strings.contains_key(s) {
-                            let label = self.new_string_label();
-                            self.data_strings.insert(s.clone(), label);
+                        if s.is_empty() {
+                            // Simple println(expr) case - need to create format string
+                            if args.len() == 1 {
+                                let arg = &args[0];
+                                let format_str = match arg {
+                                    Expr::Integer(_) => "%d\n",
+                                    Expr::Float(_) => "%.6f\n",
+                                    Expr::Char(_) => "%c\n",
+                                    Expr::Identifier(var_name) => {
+                                        // Use stored type information
+                                        match self.local_types.get(var_name) {
+                                            Some(TokenType::Int) => "%d\n",
+                                            Some(TokenType::FloatType) => "%.6f\n",
+                                            Some(TokenType::CharType) => "%c\n",
+                                            _ => "%d\n", // Default to integer
+                                        }
+                                    },
+                                    _ => "%d\n", // Default to integer
+                                };
+                                
+                                if !self.data_strings.contains_key(format_str) {
+                                    let label = self.new_string_label();
+                                    self.data_strings.insert(format_str.to_string(), label);
+                                }
+                            }
+                        } else {
+                            // Regular format string case
+                            if !self.data_strings.contains_key(s) {
+                                let label = self.new_string_label();
+                                self.data_strings.insert(s.clone(), label);
+                            }
                         }
                     }
                 }
@@ -266,6 +320,8 @@ impl Codegen {
 
                 // Store offset relative to RBP
                 self.locals.insert(name.clone(), stack_offset);
+                // Store variable type for later use
+                self.local_types.insert(name.clone(), var_type.clone());
 
                 if let Some(expr) = initializer {
                     match var_type {
@@ -450,7 +506,29 @@ impl Codegen {
             // Handle PrintStmt with RIP-relative addressing for x86-64
             Stmt::PrintStmt { format_string, args } => {
                 if let Expr::String(s) = format_string {
-                    if args.is_empty() {
+                    if s.is_empty() {
+                        // Simple println(expr) case
+                        if args.len() == 1 {
+                            let arg = &args[0];
+                            match arg {
+                                Expr::Identifier(name) => {
+                                    self.emit_comment(&format!("--- println({}); ---", name));
+                                }
+                                Expr::Integer(i) => {
+                                    self.emit_comment(&format!("--- println({}); ---", i));
+                                }
+                                Expr::Float(f) => {
+                                    self.emit_comment(&format!("--- println({}); ---", f));
+                                }
+                                Expr::Char(c) => {
+                                    self.emit_comment(&format!("--- println('{}'); ---", c));
+                                }
+                                _ => {
+                                    self.emit_comment("--- println(expr); ---");
+                                }
+                            }
+                        }
+                    } else if args.is_empty() {
                         self.emit_comment(&format!("--- println(\"{}\"); ---", s.replace('\n', "\\n")));
                     } else {
                         let args_str = args.iter()
@@ -467,6 +545,118 @@ impl Codegen {
                     }
                 }
                 if let Expr::String(s) = format_string {
+                    if s.is_empty() {
+                        // Handle simple println(expr) case
+                        if args.len() == 1 {
+                            let arg = &args[0];
+                            
+                            // Determine the appropriate format string based on the expression type
+                            let (format_str, _is_float) = match arg {
+                                Expr::Integer(_) => ("%d\n", false),
+                                Expr::Float(_) => ("%.6f\n", true),
+                                Expr::Char(_) => ("%c\n", false),
+                                Expr::Identifier(var_name) => {
+                                    // Use stored type information
+                                    match self.local_types.get(var_name) {
+                                        Some(TokenType::Int) => ("%d\n", false),
+                                        Some(TokenType::FloatType) => ("%.6f\n", true),
+                                        Some(TokenType::CharType) => ("%c\n", false),
+                                        _ => ("%d\n", false), // Default to integer
+                                    }
+                                }
+                                _ => ("%d\n", false), // Default to integer format
+                            };
+                            
+                            // Create the format string if it doesn't exist
+                            let format_label = if let Some(label) = self.data_strings.get(format_str) {
+                                label.clone()
+                            } else {
+                                let label = format!("str_{}", self.data_strings.len());
+                                self.data_strings.insert(format_str.to_string(), label.clone());
+                                label
+                            };
+                            
+                            self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
+                            self.emit_line("    and     rsp, ~15            ; Force l'alignement sur 16 octets");
+                            self.emit_instruction(Instruction::Sub, vec![
+                                Operand::Register(Register::Rsp), 
+                                Operand::Immediate(32)
+                            ]);
+                            self.emit_line("");
+                            
+                            // Set up format string in RCX
+                            self.emit_instruction(Instruction::Mov, vec![
+                                Operand::Register(Register::Rcx), 
+                                Operand::Label(format_label)
+                            ]);
+                            
+                            // Handle the argument
+                            match arg {
+                                Expr::Integer(i) => {
+                                    self.emit_instruction(Instruction::Mov, vec![
+                                        Operand::Register(Register::Edx), 
+                                        Operand::Immediate(*i)
+                                    ]);
+                                }
+                                Expr::Float(f) => {
+                                    // For float, we need to put it in both XMM1 and RDX
+                                    let float_bits = f.to_bits();
+                                    self.emit_instruction(Instruction::Mov, vec![
+                                        Operand::Register(Register::Rax), 
+                                        Operand::Immediate(float_bits as i64)
+                                    ]);
+                                    self.emit_line("    movq    xmm1, rax              ; Float value in XMM1");
+                                    self.emit_line("    movq    rdx, xmm1              ; AND copy to RDX for printf");
+                                }
+                                Expr::Char(c) => {
+                                    self.emit_instruction(Instruction::Mov, vec![
+                                        Operand::Register(Register::Edx), 
+                                        Operand::Immediate(*c as i64)
+                                    ]);
+                                }
+                                Expr::Identifier(var_name) => {
+                                    if let Some(&offset) = self.locals.get(var_name) {
+                                        // Handle different types based on stored type information
+                                        match self.local_types.get(var_name) {
+                                            Some(TokenType::Int) => {
+                                                self.emit_line(&format!("    mov     edx, [rbp{}]            ; Load int variable {} value", offset, var_name));
+                                            }
+                                            Some(TokenType::FloatType) => {
+                                                self.emit_line(&format!("    movsd   xmm1, [rbp{}]          ; Load float variable {} into XMM1", offset, var_name));
+                                                self.emit_line("    movq    rdx, xmm1              ; Copy float to RDX for printf");
+                                            }
+                                            Some(TokenType::CharType) => {
+                                                self.emit_line(&format!("    movzx   edx, byte [rbp{}]      ; Load char variable {} value", offset, var_name));
+                                            }
+                                            _ => {
+                                                // Default to integer
+                                                self.emit_line(&format!("    mov     edx, [rbp{}]            ; Load variable {} value (default int)", offset, var_name));
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    // For other expressions, generate code and use the result
+                                    self.gen_expr(arg);
+                                    self.emit_instruction(Instruction::Mov, vec![
+                                        Operand::Register(Register::Edx), 
+                                        Operand::Register(Register::Eax)
+                                    ]);
+                                }
+                            }
+                            
+                            self.emit_line("");
+                            self.emit_instruction(Instruction::Call, vec![Operand::Label("printf".to_string())]);
+                            
+                            self.emit_line("");
+                            self.emit_instruction(Instruction::Add, vec![
+                                Operand::Register(Register::Rsp), 
+                                Operand::Immediate(32)
+                            ]);
+                        }
+                        return;
+                    }
+                    
                     let format_label = self.data_strings.get(s).unwrap().clone();
                     
                     self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
