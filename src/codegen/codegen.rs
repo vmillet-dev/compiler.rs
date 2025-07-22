@@ -825,29 +825,29 @@ impl Codegen {
                 self.gen_expr(right);
                 self.emit_instruction(Instruction::Push, vec![Operand::Register(Register::Rax)]);
                 self.gen_expr(left);
-                self.emit_instruction(Instruction::Pop, vec![Operand::Register(Register::Rcx)]);
+                self.emit_instruction(Instruction::Pop, vec![Operand::Register(Register::R8)]);
 
                 match operator {
                     TokenType::Plus => self.emit_instruction(Instruction::Add, vec![
                         Operand::Register(Register::Rax), 
-                        Operand::Register(Register::Rcx)
+                        Operand::Register(Register::R8)
                     ]),
                     TokenType::Minus => self.emit_instruction(Instruction::Sub, vec![
                         Operand::Register(Register::Rax), 
-                        Operand::Register(Register::Rcx)
+                        Operand::Register(Register::R8)
                     ]),
                     TokenType::Multiply => self.emit_instruction(Instruction::Imul, vec![
                         Operand::Register(Register::Rax), 
-                        Operand::Register(Register::Rcx)
+                        Operand::Register(Register::R8)
                     ]),
                     TokenType::Divide => {
                         self.emit_instruction(Instruction::Cqo, vec![]);
-                        self.emit_instruction(Instruction::Idiv, vec![Operand::Register(Register::Rcx)]);
+                        self.emit_instruction(Instruction::Idiv, vec![Operand::Register(Register::R8)]);
                     }
                     TokenType::Equal => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Sete, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -858,7 +858,7 @@ impl Codegen {
                     TokenType::NotEqual => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Setne, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -869,7 +869,7 @@ impl Codegen {
                     TokenType::LessThan => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Setl, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -880,7 +880,7 @@ impl Codegen {
                     TokenType::LessEqual => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Setle, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -891,7 +891,7 @@ impl Codegen {
                     TokenType::GreaterThan => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Setg, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -902,7 +902,7 @@ impl Codegen {
                     TokenType::GreaterEqual => {
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Setge, vec![Operand::Register(Register::Al)]);
                         self.emit_instruction(Instruction::Movzx, vec![
@@ -913,7 +913,7 @@ impl Codegen {
                     TokenType::LogicalAnd => {
                         self.emit_instruction(Instruction::And, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
@@ -928,7 +928,7 @@ impl Codegen {
                     TokenType::LogicalOr => {
                         self.emit_instruction(Instruction::Or, vec![
                             Operand::Register(Register::Rax), 
-                            Operand::Register(Register::Rcx)
+                            Operand::Register(Register::R8)
                         ]);
                         self.emit_instruction(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
@@ -1019,12 +1019,6 @@ impl Codegen {
 
     fn emit_comment(&mut self, comment: &str) {
         self.emit_line(&format!("; {}", comment));
-    }
-
-    fn new_label(&mut self, base: &str) -> String {
-        let label = format!("{}_{}", base, self.label_count);
-        self.label_count += 1;
-        label
     }
 
     fn new_string_label(&mut self) -> String {
