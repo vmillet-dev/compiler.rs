@@ -171,10 +171,23 @@ cargo build
 ```
 
 ### Run the Compiler
+
+#### Direct Compilation (Default)
 ```bash
 cargo run
 ```
-This generates `output.asm` containing the x86-64 assembly code.
+This generates `output.asm` containing the x86-64 assembly code using direct AST-to-assembly translation.
+
+#### IR-Based Compilation
+```bash
+cargo run -- --ir
+```
+This generates `output_ir.asm` containing the x86-64 assembly code using an intermediate representation (IR) pipeline:
+1. **AST → IR**: Converts the Abstract Syntax Tree to intermediate representation
+2. **IR Optimization**: Performs optimizations like constant folding and dead code elimination  
+3. **IR → Assembly**: Translates optimized IR to x86-64 assembly
+
+The IR pipeline provides better optimization opportunities and cleaner code generation architecture.
 
 ### Assemble and Link (Windows)
 ```bash
@@ -184,9 +197,39 @@ gcc -o output.exe output.obj -lmsvcrt
 ```
 
 ### Run Tests
+
+#### Unit Tests
 ```bash
 cargo test
 ```
+Runs unit tests for lexer, parser, and code generation components.
+
+#### Integration Tests
+```bash
+cargo test --test integration_tests
+```
+Runs comprehensive integration tests that validate the complete compilation pipeline by:
+- Compiling actual C code snippets through both direct and IR-based compilation paths
+- Validating IR output structure and instruction patterns
+- Verifying generated assembly contains expected instructions
+- Ensuring both compilation modes produce functionally equivalent results
+
+The integration test suite covers:
+- Variable declarations and assignments
+- Binary and unary arithmetic operations
+- Conditional statements and control flow
+- Print statements with format strings
+- Multiple data types (int, float, char)
+- Complex nested expressions
+- Block statements and variable scoping
+- Comparison operators
+- Expression statements
+
+**Integration Test Structure:**
+Each test compiles a minimal C code snippet and validates:
+1. **IR Structure**: Checks for expected IR instructions (e.g., `%x = alloca i32`, `add i32`, `br %t1`)
+2. **Assembly Output**: Verifies both direct and IR-generated assembly contain expected x86-64 instructions
+3. **Functional Equivalence**: Ensures both compilation paths produce working assembly code
 
 ## CI/CD Pipeline
 
