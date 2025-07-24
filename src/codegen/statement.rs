@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use crate::lexer::TokenType;
 use crate::parser::ast::{Expr, Stmt};
 use super::instruction::{Instruction, Operand, Register, Size};
-use super::emitter::{Emitter, CodeEmitter};
+use super::emitter::{Emitter, CodeEmitter, CodeEmitterWithComment};
 use super::expression::ExpressionGenerator;
 
-pub trait StatementGenerator: Emitter + CodeEmitter + ExpressionGenerator {
+pub trait StatementGenerator: Emitter + CodeEmitter + CodeEmitterWithComment + ExpressionGenerator {
     fn gen_stmt(&mut self, stmt: &Stmt);
     fn get_stack_offset(&self) -> i32;
     fn set_stack_offset(&mut self, offset: i32);
@@ -18,6 +18,7 @@ impl StatementGenerator for super::Codegen {
     fn gen_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl { var_type, name, initializer } => {
+                // Quick preview of variable declaration
                 let type_str = match var_type {
                     TokenType::Int => "int",
                     TokenType::FloatType => "float", 
@@ -30,11 +31,11 @@ impl StatementGenerator for super::Codegen {
                         Expr::Float(f) => f.to_string(),
                         Expr::Char(c) => format!("'{}'", c),
                         Expr::String(s) => format!("\"{}\"", s),
-                        _ => "expression".to_string(),
+                        _ => "expr".to_string(),
                     };
-                    self.emit_comment(&format!("--- {} {} = {}; ---", type_str, name, init_str));
+                    self.emit_comment(&format!("{} {} = {}", type_str, name, init_str));
                 } else {
-                    self.emit_comment(&format!("--- {} {}; ---", type_str, name));
+                    self.emit_comment(&format!("{} {}", type_str, name));
                 }
                 let (_var_size, stack_offset) = match var_type {
                     TokenType::Int => {
@@ -64,16 +65,16 @@ impl StatementGenerator for super::Codegen {
                     match var_type {
                         TokenType::Int => {
                             if let Expr::Integer(i) = expr {
-                                self.emit_instruction_with_size(Instruction::Mov, Size::Dword, vec![
+                                self.emit_instruction_with_size_and_comment(Instruction::Mov, Size::Dword, vec![
                                     Operand::Memory { base: Register::Rbp, offset: stack_offset },
                                     Operand::Immediate(*i)
-                                ]);
+                                ], Some(&format!("init {} = {}", name, i)));
                             } else {
                                 self.gen_expr(expr);
-                                self.emit_instruction_with_size(Instruction::Mov, Size::Dword, vec![
+                                self.emit_instruction_with_size_and_comment(Instruction::Mov, Size::Dword, vec![
                                     Operand::Memory { base: Register::Rbp, offset: stack_offset },
                                     Operand::Register(Register::Eax)
-                                ]);
+                                ], Some(&format!("store {}", name)));
                             }
                         },
                         TokenType::FloatType => {
@@ -131,38 +132,21 @@ impl StatementGenerator for super::Codegen {
                     Expr::Binary { left, operator, right } => {
                         match (left.as_ref(), operator, right.as_ref()) {
                             (Expr::Identifier(name), TokenType::Plus, Expr::Integer(i)) => format!("{} + {}", name, i),
-                            _ => "expression".to_string(),
+                            _ => "expr".to_string(),
                         }
                     },
-                    _ => "expression".to_string(),
+                    _ => "expr".to_string(),
                 };
-                self.emit_comment(&format!("--- return {}; ---", return_str));
-                // Handle specific case of "return var + 1;"
-                if let Expr::Binary { left, operator, right } = expr {
-                    if let (Expr::Identifier(var_name), TokenType::Plus, Expr::Integer(1)) = (left.as_ref(), operator, right.as_ref()) {
-                        if let Some(&offset) = self.locals.get(var_name) {
-                            self.emit_line(&format!("    mov     eax, [rbp{}]            ; Recharge {} dans eax", offset, var_name));
-                            self.emit_instruction(Instruction::Inc, vec![Operand::Register(Register::Eax)]);
-                        } else {
-                            self.gen_expr(expr);
-                            self.emit_line("    ; result in eax");
-                        }
-                    } else {
-                        self.gen_expr(expr);
-                        self.emit_line("    ; result in eax");
-                    }
-                } else {
-                    self.gen_expr(expr);
-                    self.emit_line("    ; result in eax");
-                }
+                self.emit_comment(&format!("return {}", return_str));
+                self.gen_expr(expr);
             }
 
             Stmt::Return(None) => {
-                self.emit_comment("--- return 0; ---");
-                self.emit_instruction(Instruction::Xor, vec![
+                self.emit_comment("return 0");
+                self.emit_instruction_with_comment(Instruction::Xor, vec![
                     Operand::Register(Register::Eax), 
                     Operand::Register(Register::Eax)
-                ]);
+                ], Some("return 0"));
             }
 
             Stmt::ExprStmt(expr) => {
@@ -313,43 +297,39 @@ impl StatementGenerator for super::Codegen {
                                 label
                             };
                             
-                            self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
-                            self.emit_line("    and     rsp, ~15            ; Force l'alignement sur 16 octets");
-                            self.emit_instruction(Instruction::Sub, vec![
+                            self.emit_comment(&format!("printf call: {}", format_str));
+                            self.emit_line("    and     rsp, ~15            ; align stack");
+                            self.emit_instruction_with_comment(Instruction::Sub, vec![
                                 Operand::Register(Register::Rsp), 
                                 Operand::Immediate(32)
-                            ]);
-                            self.emit_line("");
+                            ], Some("shadow space"));
                             
-                            // Set up format string in RCX
-                            self.emit_instruction(Instruction::Mov, vec![
+                            self.emit_instruction_with_comment(Instruction::Mov, vec![
                                 Operand::Register(Register::Rcx), 
                                 Operand::Label(format_label)
-                            ]);
+                            ], Some("format string"));
                             
-                            // Handle the argument
                             match arg {
                                 Expr::Integer(i) => {
-                                    self.emit_instruction(Instruction::Mov, vec![
+                                    self.emit_instruction_with_comment(Instruction::Mov, vec![
                                         Operand::Register(Register::Edx), 
                                         Operand::Immediate(*i)
-                                    ]);
+                                    ], Some(&format!("arg: {}", i)));
                                 }
                                 Expr::Float(f) => {
-                                    // For float, we need to put it in both XMM1 and RDX
                                     let float_bits = f.to_bits();
-                                    self.emit_instruction(Instruction::Mov, vec![
+                                    self.emit_instruction_with_comment(Instruction::Mov, vec![
                                         Operand::Register(Register::Rax), 
                                         Operand::Immediate(float_bits as i64)
-                                    ]);
-                                    self.emit_line("    movq    xmm1, rax              ; Float value in XMM1");
-                                    self.emit_line("    movq    rdx, xmm1              ; AND copy to RDX for printf");
+                                    ], Some(&format!("float {} bits", f)));
+                                    self.emit_line("    movq    xmm1, rax              ; to XMM1");
+                                    self.emit_line("    movq    rdx, xmm1              ; to RDX");
                                 }
                                 Expr::Char(c) => {
-                                    self.emit_instruction(Instruction::Mov, vec![
+                                    self.emit_instruction_with_comment(Instruction::Mov, vec![
                                         Operand::Register(Register::Edx), 
                                         Operand::Immediate(*c as i64)
-                                    ]);
+                                    ], Some(&format!("arg: '{}'", c)));
                                 }
                                 Expr::Identifier(var_name) => {
                                     if let Some(&offset) = self.locals.get(var_name) {

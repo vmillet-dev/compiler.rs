@@ -1,9 +1,9 @@
 use crate::lexer::TokenType;
 use crate::parser::ast::Expr;
 use super::instruction::{Instruction, Operand, Register};
-use super::emitter::{Emitter, CodeEmitter};
+use super::emitter::{Emitter, CodeEmitter, CodeEmitterWithComment};
 
-pub trait ExpressionGenerator: Emitter + CodeEmitter {
+pub trait ExpressionGenerator: Emitter + CodeEmitter + CodeEmitterWithComment {
     fn gen_expr(&mut self, expr: &Expr);
     fn get_locals(&self) -> &std::collections::HashMap<String, i32>;
     fn get_data_strings(&self) -> &std::collections::HashMap<String, String>;
@@ -13,30 +13,23 @@ impl ExpressionGenerator for super::Codegen {
     fn gen_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Integer(i) => {
-                self.emit_instruction(Instruction::Mov, vec![
+                self.emit_instruction_with_comment(Instruction::Mov, vec![
                     Operand::Register(Register::Rax), 
                     Operand::Immediate(*i)
-                ]);
+                ], Some(&format!("load integer {}", i)));
             }
             Expr::Float(f) => {
-                // Pour les floats, nous devons les gérer correctement pour printf
-                // Nous allons créer une approche hybride :
-                // - Stocker le float dans la section .data
-                // - Charger sa valeur dans un registre XMM pour printf
                 let float_bits = f.to_bits();
-                self.emit_instruction(Instruction::Mov, vec![
+                self.emit_instruction_with_comment(Instruction::Mov, vec![
                     Operand::Register(Register::Rax), 
                     Operand::Immediate(float_bits as i64)
-                ]);
-                // Pour printf avec %f, nous devrions utiliser movq xmm0, rax
-                // mais cela nécessiterait de suivre quel registre XMM utiliser
-                // Pour l'instant, gardons la représentation en bits
+                ], Some(&format!("load float {} as bits", f)));
             }
             Expr::Char(c) => {
-                self.emit_instruction(Instruction::Mov, vec![
+                self.emit_instruction_with_comment(Instruction::Mov, vec![
                     Operand::Register(Register::Rax), 
                     Operand::Immediate(*c as i64)
-                ]);
+                ], Some(&format!("load char '{}'", c)));
             }
             Expr::String(s) => {
                 // CORRECTION: Utiliser RIP-relative addressing pour les chaînes
@@ -56,38 +49,38 @@ impl ExpressionGenerator for super::Codegen {
             }
             Expr::Identifier(name) => {
                 if let Some(&offset) = self.locals.get(name) {
-                    // Load value from stack into RAX
-                    // Need to consider variable size (BYTE, WORD, DWORD, QWORD)
-                    // For now, assume QWORD for all identifiers for simplicity.
-                    self.emit_instruction(Instruction::Mov, vec![
+                    self.emit_instruction_with_comment(Instruction::Mov, vec![
                         Operand::Register(Register::Rax), 
                         Operand::Memory { base: Register::Rbp, offset }
-                    ]);
+                    ], Some(&format!("load {}", name)));
                 } else {
-                    self.emit_line(&format!("    ; unknown variable '{}'", name));
-                    self.emit_instruction(Instruction::Mov, vec![
+                    self.emit_instruction_with_comment(Instruction::Mov, vec![
                         Operand::Register(Register::Rax), 
                         Operand::Immediate(0)
-                    ]);
+                    ], Some(&format!("unknown var {}", name)));
                 }
             }
             Expr::Unary { operator, operand } => {
                 match operator {
                     TokenType::LogicalNot => { // Unary '!'
-                        self.gen_expr(operand); // Evaluate the operand
-                        self.emit_instruction(Instruction::Cmp, vec![
+                        self.gen_expr(operand);
+                        self.emit_instruction_with_comment(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Immediate(0)
-                        ]);
-                        self.emit_instruction(Instruction::Sete, vec![Operand::Register(Register::Al)]);
-                        self.emit_instruction(Instruction::Movzx, vec![
+                        ], Some("test for zero"));
+                        self.emit_instruction_with_comment(Instruction::Sete, vec![
+                            Operand::Register(Register::Al)
+                        ], Some("set if zero"));
+                        self.emit_instruction_with_comment(Instruction::Movzx, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::Al)
-                        ]);
+                        ], Some("extend to 64-bit"));
                     }
                     TokenType::Minus => { // Unary '-'
-                        self.gen_expr(operand); // Evaluate the operand
-                        self.emit_instruction(Instruction::Neg, vec![Operand::Register(Register::Rax)]);
+                        self.gen_expr(operand);
+                        self.emit_instruction_with_comment(Instruction::Neg, vec![
+                            Operand::Register(Register::Rax)
+                        ], Some("negate"));
                     }
                     _ => {
                         self.emit_line(&format!("    ; unsupported unary operator: {:?}", operator));
@@ -100,61 +93,78 @@ impl ExpressionGenerator for super::Codegen {
             }
 
             Expr::Binary { left, operator, right } => {
-                // Binary operators
                 self.gen_expr(right);
-                self.emit_instruction(Instruction::Push, vec![Operand::Register(Register::Rax)]);
+                self.emit_instruction_with_comment(Instruction::Push, vec![
+                    Operand::Register(Register::Rax)
+                ], Some("save right"));
                 self.gen_expr(left);
-                self.emit_instruction(Instruction::Pop, vec![Operand::Register(Register::R8)]);
+                self.emit_instruction_with_comment(Instruction::Pop, vec![
+                    Operand::Register(Register::R8)
+                ], Some("restore right"));
 
                 match operator {
-                    TokenType::Plus => self.emit_instruction(Instruction::Add, vec![
-                        Operand::Register(Register::Rax), 
-                        Operand::Register(Register::R8)
-                    ]),
-                    TokenType::Minus => self.emit_instruction(Instruction::Sub, vec![
-                        Operand::Register(Register::Rax), 
-                        Operand::Register(Register::R8)
-                    ]),
-                    TokenType::Multiply => self.emit_instruction(Instruction::Imul, vec![
-                        Operand::Register(Register::Rax), 
-                        Operand::Register(Register::R8)
-                    ]),
+                    TokenType::Plus => {
+                        self.emit_instruction_with_comment(Instruction::Add, vec![
+                            Operand::Register(Register::Rax), 
+                            Operand::Register(Register::R8)
+                        ], Some("add"));
+                    },
+                    TokenType::Minus => {
+                        self.emit_instruction_with_comment(Instruction::Sub, vec![
+                            Operand::Register(Register::Rax), 
+                            Operand::Register(Register::R8)
+                        ], Some("subtract"));
+                    },
+                    TokenType::Multiply => {
+                        self.emit_instruction_with_comment(Instruction::Imul, vec![
+                            Operand::Register(Register::Rax), 
+                            Operand::Register(Register::R8)
+                        ], Some("multiply"));
+                    },
                     TokenType::Divide => {
-                        self.emit_instruction(Instruction::Cqo, vec![]);
-                        self.emit_instruction(Instruction::Idiv, vec![Operand::Register(Register::R8)]);
+                        self.emit_instruction_with_comment(Instruction::Cqo, vec![], Some("sign extend"));
+                        self.emit_instruction_with_comment(Instruction::Idiv, vec![
+                            Operand::Register(Register::R8)
+                        ], Some("divide"));
                     }
                     TokenType::Equal => {
-                        self.emit_instruction(Instruction::Cmp, vec![
+                        self.emit_instruction_with_comment(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::R8)
-                        ]);
-                        self.emit_instruction(Instruction::Sete, vec![Operand::Register(Register::Al)]);
-                        self.emit_instruction(Instruction::Movzx, vec![
+                        ], Some("compare"));
+                        self.emit_instruction_with_comment(Instruction::Sete, vec![
+                            Operand::Register(Register::Al)
+                        ], Some("set if equal"));
+                        self.emit_instruction_with_comment(Instruction::Movzx, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::Al)
-                        ]);
+                        ], Some("extend to 64-bit"));
                     }
                     TokenType::NotEqual => {
-                        self.emit_instruction(Instruction::Cmp, vec![
+                        self.emit_instruction_with_comment(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::R8)
-                        ]);
-                        self.emit_instruction(Instruction::Setne, vec![Operand::Register(Register::Al)]);
-                        self.emit_instruction(Instruction::Movzx, vec![
+                        ], Some("compare"));
+                        self.emit_instruction_with_comment(Instruction::Setne, vec![
+                            Operand::Register(Register::Al)
+                        ], Some("set if not equal"));
+                        self.emit_instruction_with_comment(Instruction::Movzx, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::Al)
-                        ]);
+                        ], Some("extend to 64-bit"));
                     }
                     TokenType::LessThan => {
-                        self.emit_instruction(Instruction::Cmp, vec![
+                        self.emit_instruction_with_comment(Instruction::Cmp, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::R8)
-                        ]);
-                        self.emit_instruction(Instruction::Setl, vec![Operand::Register(Register::Al)]);
-                        self.emit_instruction(Instruction::Movzx, vec![
+                        ], Some("compare"));
+                        self.emit_instruction_with_comment(Instruction::Setl, vec![
+                            Operand::Register(Register::Al)
+                        ], Some("set if less"));
+                        self.emit_instruction_with_comment(Instruction::Movzx, vec![
                             Operand::Register(Register::Rax), 
                             Operand::Register(Register::Al)
-                        ]);
+                        ], Some("extend to 64-bit"));
                     }
                     TokenType::LessEqual => {
                         self.emit_instruction(Instruction::Cmp, vec![
