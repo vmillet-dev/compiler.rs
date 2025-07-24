@@ -600,7 +600,7 @@ impl IrCodegen {
                         let arg_operand = self.ir_value_to_operand(arg);
                         // Check if this is a float by looking at the memory location
                         // For now, assume temp variables that are floats need special handling
-                        if let IrValue::Temp(temp_id) = arg {
+                        if let IrValue::Temp(_temp_id) = arg {
                             // Check if this temp was created from a float operation
                             if matches!(arg_operand, Operand::Memory { .. }) {
                                 // For now, load as 64-bit value (could be float or int)
