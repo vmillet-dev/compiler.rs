@@ -19,11 +19,15 @@ impl StatementGenerator for super::Codegen {
         match stmt {
             Stmt::VarDecl { var_type, name, initializer } => {
                 // Quick preview of variable declaration
-                let type_str = match var_type {
-                    TokenType::Int => "int",
-                    TokenType::FloatType => "float", 
-                    TokenType::CharType => "char",
-                    _ => "unknown",
+                let type_str = if let Some(token_type) = var_type.to_token_type() {
+                    match token_type {
+                        crate::lexer::TokenType::Int => "int",
+                        crate::lexer::TokenType::FloatType => "float", 
+                        crate::lexer::TokenType::CharType => "char",
+                        _ => "int", // Default fallback
+                    }
+                } else {
+                    "int" // Default fallback
                 };
                 if let Some(init_expr) = initializer {
                     let init_str = match init_expr {
@@ -37,33 +41,43 @@ impl StatementGenerator for super::Codegen {
                 } else {
                     self.emit_comment(&format!("{} {}", type_str, name));
                 }
-                let (_var_size, stack_offset) = match var_type {
-                    TokenType::Int => {
-                        self.stack_offset -= 4;
-                        (4, self.stack_offset)
-                    },
-                    TokenType::FloatType => {
-                        self.stack_offset -= 8;
-                        (8, self.stack_offset)
-                    },
-                    TokenType::CharType => {
-                        self.stack_offset -= 1;
-                        (1, self.stack_offset)
-                    },
-                    _ => {
-                        self.stack_offset -= 8;
-                        (8, self.stack_offset)
+                let (_var_size, stack_offset) = if let Some(token_type) = var_type.to_token_type() {
+                    match token_type {
+                        crate::lexer::TokenType::Int => {
+                            self.stack_offset -= 4;
+                            (4, self.stack_offset)
+                        },
+                        crate::lexer::TokenType::FloatType => {
+                            self.stack_offset -= 8;
+                            (8, self.stack_offset)
+                        },
+                        crate::lexer::TokenType::CharType => {
+                            self.stack_offset -= 1;
+                            (1, self.stack_offset)
+                        },
+                        _ => {
+                            self.stack_offset -= 8;
+                            (8, self.stack_offset)
+                        }
                     }
+                } else {
+                    self.stack_offset -= 8;
+                    (8, self.stack_offset)
                 };
 
                 // Store offset relative to RBP
                 self.locals.insert(name.clone(), stack_offset);
                 // Store variable type for later use
-                self.local_types.insert(name.clone(), var_type.clone());
+                if let Some(token_type) = var_type.to_token_type() {
+                    self.local_types.insert(name.clone(), token_type);
+                } else {
+                    self.local_types.insert(name.clone(), crate::lexer::TokenType::Int); // Default fallback
+                }
 
                 if let Some(expr) = initializer {
-                    match var_type {
-                        TokenType::Int => {
+                    if let Some(token_type) = var_type.to_token_type() {
+                        match token_type {
+                            crate::lexer::TokenType::Int => {
                             if let Expr::Integer(i) = expr {
                                 self.emit_instruction_with_size_and_comment(Instruction::Mov, Size::Dword, vec![
                                     Operand::Memory { base: Register::Rbp, offset: stack_offset },
@@ -77,7 +91,7 @@ impl StatementGenerator for super::Codegen {
                                 ], Some(&format!("store {}", name)));
                             }
                         },
-                        TokenType::FloatType => {
+                            crate::lexer::TokenType::FloatType => {
                             if let Expr::Float(f) = expr {
                                 let float_bits = f.to_bits();
                                 self.emit_instruction(Instruction::Mov, vec![
@@ -100,7 +114,7 @@ impl StatementGenerator for super::Codegen {
                                 ]);
                             }
                         },
-                        TokenType::CharType => {
+                            crate::lexer::TokenType::CharType => {
                             if let Expr::Char(c) = expr {
                                 self.emit_instruction_with_size(Instruction::Mov, Size::Byte, vec![
                                     Operand::Memory { base: Register::Rbp, offset: stack_offset },
@@ -114,13 +128,20 @@ impl StatementGenerator for super::Codegen {
                                 ]);
                             }
                         },
-                        _ => {
-                            self.gen_expr(expr);
-                            self.emit_instruction_with_size(Instruction::Mov, Size::Qword, vec![
-                                Operand::Memory { base: Register::Rbp, offset: stack_offset },
-                                Operand::Register(Register::Rax)
-                            ]);
+                            _ => {
+                                self.gen_expr(expr);
+                                self.emit_instruction_with_size(Instruction::Mov, Size::Qword, vec![
+                                    Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                                    Operand::Register(Register::Rax)
+                                ]);
+                            }
                         }
+                    } else {
+                        self.gen_expr(expr);
+                        self.emit_instruction_with_size(Instruction::Mov, Size::Qword, vec![
+                            Operand::Memory { base: Register::Rbp, offset: stack_offset },
+                            Operand::Register(Register::Rax)
+                        ]);
                     }
                 }
             }

@@ -1,4 +1,5 @@
 use crate::lexer::TokenType;
+use crate::types::Type;
 
 // AST definitions
 #[derive(Debug, Clone, PartialEq)]
@@ -31,7 +32,7 @@ pub enum Expr {
 pub enum Stmt {
     ExprStmt(Expr),
     VarDecl {
-        var_type: TokenType,
+        var_type: Type,
         name: String,
         initializer: Option<Expr>,
     },
@@ -42,7 +43,7 @@ pub enum Stmt {
     },
     Block(Vec<Stmt>),
     Function {
-        return_type: TokenType,
+        return_type: Type,
         name: String,
         body: Vec<Stmt>,
     },

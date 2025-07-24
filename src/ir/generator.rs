@@ -1,5 +1,6 @@
 use crate::parser::ast::{Expr, Stmt};
 use crate::lexer::TokenType;
+use crate::types::Type;
 use super::ir::{IrProgram, IrFunction, IrInstruction, IrValue, IrType, IrBinaryOp, IrUnaryOp};
 use std::collections::HashMap;
 
@@ -86,10 +87,14 @@ impl IrGenerator {
     }
 
     /// Generate IR for a function
-    fn generate_function(&mut self, return_type: &TokenType, name: &str, body: &[Stmt]) -> IrFunction {
+    fn generate_function(&mut self, return_type: &Type, name: &str, body: &[Stmt]) -> IrFunction {
         let function = IrFunction {
             name: name.to_string(),
-            return_type: IrType::from(return_type.clone()),
+            return_type: if let Some(token_type) = return_type.to_token_type() {
+                IrType::from(token_type)
+            } else {
+                IrType::Int // Default fallback
+            },
             parameters: Vec::new(),
             instructions: Vec::new(),
             local_vars: Vec::new(),
@@ -110,25 +115,32 @@ impl IrGenerator {
         // Ensure function has a return if it doesn't already
         if let Some(last_instruction) = self.current_function.as_ref().unwrap().instructions.last() {
             if !matches!(last_instruction, IrInstruction::Return { .. }) {
-                match return_type {
-                    TokenType::Void => {
+                if let Some(token_type) = return_type.to_token_type() {
+                    match token_type {
+                        crate::lexer::TokenType::Void => {
                         self.emit_instruction(IrInstruction::Return {
                             value: None,
                             var_type: IrType::Void,
                         });
                     }
-                    TokenType::Int => {
+                        crate::lexer::TokenType::Int => {
                         self.emit_instruction(IrInstruction::Return {
                             value: Some(IrValue::IntConstant(0)),
                             var_type: IrType::Int,
                         });
                     }
-                    _ => {
-                        self.emit_instruction(IrInstruction::Return {
-                            value: None,
-                            var_type: IrType::from(return_type.clone()),
-                        });
+                        _ => {
+                            self.emit_instruction(IrInstruction::Return {
+                                value: None,
+                                var_type: IrType::Int, // Default fallback
+                            });
+                        }
                     }
+                } else {
+                    self.emit_instruction(IrInstruction::Return {
+                        value: None,
+                        var_type: IrType::Int, // Default fallback
+                    });
                 }
             }
         }
@@ -147,7 +159,11 @@ impl IrGenerator {
     fn generate_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl { var_type, name, initializer } => {
-                let ir_type = IrType::from(var_type.clone());
+                let ir_type = if let Some(token_type) = var_type.to_token_type() {
+                    IrType::from(token_type)
+                } else {
+                    IrType::Int // Default fallback
+                };
                 
                 // Emit variable allocation
                 self.emit_instruction(IrInstruction::Alloca {
@@ -446,7 +462,11 @@ impl IrGenerator {
                 }
                 Stmt::VarDecl { var_type, name, .. } => {
                     // Store variable type for later use
-                    let ir_type = IrType::from(var_type.clone());
+                    let ir_type = if let Some(token_type) = var_type.to_token_type() {
+                    IrType::from(token_type)
+                } else {
+                    IrType::Int // Default fallback
+                };
                     self.local_types.insert(name.clone(), ir_type);
                 }
                 Stmt::If { then_branch, .. } => {
