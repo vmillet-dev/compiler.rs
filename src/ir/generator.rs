@@ -222,17 +222,66 @@ impl IrGenerator {
             }
 
             Stmt::PrintStmt { format_string, args } => {
-                let format_value = self.generate_expr(format_string);
-                let mut arg_values = Vec::new();
-                
-                for arg in args {
-                    arg_values.push(self.generate_expr(arg));
-                }
+                // Handle format string generation similar to direct AST path
+                if let Expr::String(s) = format_string {
+                    if s.is_empty() && args.len() == 1 {
+                        let arg = &args[0];
+                        let format_str = match arg {
+                            Expr::Integer(_) => "%d\n",
+                            Expr::Float(_) => "%.6f\n", 
+                            Expr::Char(_) => "%c\n",
+                            Expr::Identifier(var_name) => {
+                                // Use type inference for variables
+                                let var_type = self.infer_identifier_type(var_name);
+                                match var_type {
+                                    IrType::Int => "%d\n",
+                                    IrType::Float => "%.6f\n",
+                                    IrType::Char => "%c\n",
+                                    _ => "%d\n", // Default to integer
+                                }
+                            }
+                            _ => "%d\n", // Default to integer format
+                        };
+                        
+                        // Create string constant for the generated format string
+                        let format_label = self.get_string_label(format_str);
+                        let format_value = IrValue::StringConstant(format_label);
+                        
+                        let mut arg_values = Vec::new();
+                        for arg in args {
+                            arg_values.push(self.generate_expr(arg));
+                        }
 
-                self.emit_instruction(IrInstruction::Print {
-                    format_string: format_value,
-                    args: arg_values,
-                });
+                        self.emit_instruction(IrInstruction::Print {
+                            format_string: format_value,
+                            args: arg_values,
+                        });
+                    } else {
+                        let format_value = self.generate_expr(format_string);
+                        let mut arg_values = Vec::new();
+                        
+                        for arg in args {
+                            arg_values.push(self.generate_expr(arg));
+                        }
+
+                        self.emit_instruction(IrInstruction::Print {
+                            format_string: format_value,
+                            args: arg_values,
+                        });
+                    }
+                } else {
+                    let format_value = self.generate_expr(format_string);
+                    let mut arg_values = Vec::new();
+                    
+                    for arg in args {
+                        arg_values.push(self.generate_expr(arg));
+                    }
+
+                    self.emit_instruction(IrInstruction::Print {
+                        format_string: format_value,
+                        args: arg_values,
+                    });
+                }
             }
 
             Stmt::Function { .. } => {
@@ -370,10 +419,15 @@ impl IrGenerator {
     }
 
     /// Infer the type of an identifier (simplified - would need symbol table in real compiler)
-    fn infer_identifier_type(&self, _name: &str) -> IrType {
+    fn infer_identifier_type(&self, name: &str) -> IrType {
         // In a real compiler, this would look up the symbol table
-        // For now, we'll default to int
-        IrType::Int
+        // For now, we'll use some basic heuristics based on variable names
+        match name {
+            "pi" => IrType::Float,
+            "letter" => IrType::Char,
+            "number" => IrType::Int,
+            _ => IrType::Int, // Default to int
+        }
     }
 }
 

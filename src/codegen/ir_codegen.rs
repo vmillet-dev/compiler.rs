@@ -570,9 +570,8 @@ impl IrCodegen {
                 Operand::Label(label.clone())
             ], Some("load format string"));
             
-            // Load arguments into registers (simplified)
+            // Load arguments into registers with proper float handling
             for (i, arg) in args.iter().enumerate() {
-                let arg_operand = self.ir_value_to_operand(arg);
                 let reg = match i {
                     0 => Register::Rdx,
                     1 => Register::R8,
@@ -583,33 +582,58 @@ impl IrCodegen {
                     }
                 };
                 
-                // For memory operands, use intermediate register with proper size
-                if matches!(arg_operand, Operand::Memory { .. }) {
-                    self.emit_instruction_with_comment(Instruction::Mov, vec![
-                        Operand::Register(Register::Eax),
-                        arg_operand
-                    ], Some(&format!("load arg {} to eax", i)));
-                    
-                    // Use movsxd to sign-extend 32-bit to 64-bit for 64-bit registers
-                    match reg {
-                        Register::Rdx | Register::R8 | Register::R9 => {
-                            self.emit_instruction_with_comment(Instruction::Mov, vec![
-                                Operand::Register(reg),
-                                Operand::Register(Register::Rax)
-                            ], Some(&format!("move to arg register {}", i)));
-                        }
-                        _ => {
-                            self.emit_instruction_with_comment(Instruction::Mov, vec![
-                                Operand::Register(reg),
-                                Operand::Register(Register::Eax)
-                            ], Some(&format!("move to arg register {}", i)));
+                // Handle different argument types
+                match arg {
+                    IrValue::FloatConstant(f) => {
+                        // For float constants, load the float bits into a register and then move to arg register
+                        let float_bits = f.to_bits() as i64;
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Register(Register::Rax),
+                            Operand::Immediate(float_bits)
+                        ], Some(&format!("load float bits for arg {}", i)));
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Register(reg),
+                            Operand::Register(Register::Rax)
+                        ], Some(&format!("move to arg register {}", i)));
+                    }
+                    IrValue::Temp(_) | IrValue::Local(_) => {
+                        let arg_operand = self.ir_value_to_operand(arg);
+                        // Check if this is a float by looking at the memory location
+                        // For now, assume temp variables that are floats need special handling
+                        if let IrValue::Temp(temp_id) = arg {
+                            // Check if this temp was created from a float operation
+                            if matches!(arg_operand, Operand::Memory { .. }) {
+                                // For now, load as 64-bit value (could be float or int)
+                                self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                    Operand::Register(Register::Rax),
+                                    arg_operand
+                                ], Some(&format!("load arg {} to register", i)));
+                                self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                    Operand::Register(reg),
+                                    Operand::Register(Register::Rax)
+                                ], Some(&format!("move to arg register {}", i)));
+                            }
+                        } else if let IrValue::Local(_) = arg {
+                            if matches!(arg_operand, Operand::Memory { .. }) {
+                                self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                    Operand::Register(Register::Rax),
+                                    arg_operand
+                                ], Some(&format!("load arg {} to register", i)));
+                                self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                    Operand::Register(reg),
+                                    Operand::Register(Register::Rax)
+                                ], Some(&format!("move to arg register {}", i)));
+                            }
                         }
                     }
-                } else {
-                    self.emit_instruction_with_comment(Instruction::Mov, vec![
-                        Operand::Register(reg),
-                        arg_operand
-                    ], Some(&format!("load arg {}", i)));
+                    _ => {
+                        // Handle other types (int constants, char constants, etc.)
+                        let arg_operand = self.ir_value_to_operand(arg);
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Register(reg),
+                            arg_operand
+                        ], Some(&format!("load arg {}", i)));
+                    }
                 }
             }
             
