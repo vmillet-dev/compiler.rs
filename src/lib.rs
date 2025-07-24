@@ -5,6 +5,8 @@ pub mod error;
 
 pub mod parser;
 
+pub mod ir;
+
 pub mod codegen;
 
 pub type Result<T> = std::result::Result<T, CompilerError>;

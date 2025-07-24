@@ -3,5 +3,6 @@
 *.exe
 *.o
 *.obj
+*.ir
 *asm*
 .zencoder

@@ -1,0 +1,384 @@
+use crate::parser::ast::{Expr, Stmt};
+use crate::lexer::TokenType;
+use super::ir::{IrProgram, IrFunction, IrInstruction, IrValue, IrType, IrBinaryOp, IrUnaryOp};
+use std::collections::HashMap;
+
+/// IR Generator - converts AST to IR
+pub struct IrGenerator {
+    /// Counter for generating unique temporary variables
+    temp_counter: usize,
+    /// Counter for generating unique labels
+    label_counter: usize,
+    /// Current function being processed
+    current_function: Option<IrFunction>,
+    /// Global string constants
+    string_constants: HashMap<String, String>,
+    /// String label counter
+    string_label_counter: usize,
+}
+
+impl IrGenerator {
+    pub fn new() -> Self {
+        Self {
+            temp_counter: 0,
+            label_counter: 0,
+            current_function: None,
+            string_constants: HashMap::new(),
+            string_label_counter: 0,
+        }
+    }
+
+    /// Generate IR from AST
+    pub fn generate(&mut self, ast: &[Stmt]) -> IrProgram {
+        let mut functions = Vec::new();
+
+        for stmt in ast {
+            if let Stmt::Function { return_type, name, body } = stmt {
+                let ir_function = self.generate_function(return_type, name, body);
+                functions.push(ir_function);
+            }
+        }
+
+        // Convert string constants to global strings
+        let global_strings = self.string_constants.iter()
+            .map(|(label, content)| (label.clone(), content.clone()))
+            .collect();
+
+        IrProgram {
+            functions,
+            global_strings,
+        }
+    }
+
+    /// Generate a new temporary variable
+    fn new_temp(&mut self) -> IrValue {
+        let temp = IrValue::Temp(self.temp_counter);
+        self.temp_counter += 1;
+        temp
+    }
+
+    /// Generate a new label
+    fn new_label(&mut self, prefix: &str) -> String {
+        let label = format!("{}_{}", prefix, self.label_counter);
+        self.label_counter += 1;
+        label
+    }
+
+    /// Generate a string constant label
+    fn get_string_label(&mut self, content: &str) -> String {
+        // Check if we already have this string
+        for (label, existing_content) in &self.string_constants {
+            if existing_content == content {
+                return label.clone();
+            }
+        }
+
+        // Create new string label
+        let label = format!("str_{}", self.string_label_counter);
+        self.string_label_counter += 1;
+        self.string_constants.insert(label.clone(), content.to_string());
+        label
+    }
+
+    /// Generate IR for a function
+    fn generate_function(&mut self, return_type: &TokenType, name: &str, body: &[Stmt]) -> IrFunction {
+        let function = IrFunction {
+            name: name.to_string(),
+            return_type: IrType::from(return_type.clone()),
+            parameters: Vec::new(),
+            instructions: Vec::new(),
+            local_vars: Vec::new(),
+        };
+
+        self.current_function = Some(function.clone());
+
+        // Add entry label
+        self.emit_instruction(IrInstruction::Label {
+            name: "entry".to_string(),
+        });
+
+        // Generate instructions for function body
+        for stmt in body {
+            self.generate_stmt(stmt);
+        }
+
+        // Ensure function has a return if it doesn't already
+        if let Some(last_instruction) = self.current_function.as_ref().unwrap().instructions.last() {
+            if !matches!(last_instruction, IrInstruction::Return { .. }) {
+                match return_type {
+                    TokenType::Void => {
+                        self.emit_instruction(IrInstruction::Return {
+                            value: None,
+                            var_type: IrType::Void,
+                        });
+                    }
+                    TokenType::Int => {
+                        self.emit_instruction(IrInstruction::Return {
+                            value: Some(IrValue::IntConstant(0)),
+                            var_type: IrType::Int,
+                        });
+                    }
+                    _ => {
+                        self.emit_instruction(IrInstruction::Return {
+                            value: None,
+                            var_type: IrType::from(return_type.clone()),
+                        });
+                    }
+                }
+            }
+        }
+
+        self.current_function.take().unwrap()
+    }
+
+    /// Emit an instruction to the current function
+    fn emit_instruction(&mut self, instruction: IrInstruction) {
+        if let Some(ref mut function) = self.current_function {
+            function.instructions.push(instruction);
+        }
+    }
+
+    /// Generate IR for a statement
+    fn generate_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::VarDecl { var_type, name, initializer } => {
+                let ir_type = IrType::from(var_type.clone());
+                
+                // Emit variable allocation
+                self.emit_instruction(IrInstruction::Alloca {
+                    var_type: ir_type.clone(),
+                    name: name.clone(),
+                });
+
+                // Add to local variables
+                if let Some(ref mut function) = self.current_function {
+                    function.local_vars.push((name.clone(), ir_type.clone()));
+                }
+
+                // Handle initialization
+                if let Some(init_expr) = initializer {
+                    let init_value = self.generate_expr(init_expr);
+                    self.emit_instruction(IrInstruction::Store {
+                        value: init_value,
+                        dest: IrValue::Local(name.clone()),
+                        var_type: ir_type,
+                    });
+                }
+            }
+
+            Stmt::Return(expr_opt) => {
+                if let Some(expr) = expr_opt {
+                    let value = self.generate_expr(expr);
+                    let return_type = self.infer_expr_type(expr);
+                    self.emit_instruction(IrInstruction::Return {
+                        value: Some(value),
+                        var_type: return_type,
+                    });
+                } else {
+                    self.emit_instruction(IrInstruction::Return {
+                        value: None,
+                        var_type: IrType::Void,
+                    });
+                }
+            }
+
+            Stmt::ExprStmt(expr) => {
+                self.generate_expr(expr);
+            }
+
+            Stmt::Block(stmts) => {
+                for stmt in stmts {
+                    self.generate_stmt(stmt);
+                }
+            }
+
+            Stmt::If { condition, then_branch } => {
+                let condition_value = self.generate_expr(condition);
+                let then_label = self.new_label("if_then");
+                let end_label = self.new_label("if_end");
+
+                // Branch based on condition
+                self.emit_instruction(IrInstruction::Branch {
+                    condition: condition_value,
+                    true_label: then_label.clone(),
+                    false_label: end_label.clone(),
+                });
+
+                // Then branch
+                self.emit_instruction(IrInstruction::Label {
+                    name: then_label,
+                });
+                for stmt in then_branch {
+                    self.generate_stmt(stmt);
+                }
+                self.emit_instruction(IrInstruction::Jump {
+                    label: end_label.clone(),
+                });
+
+                // End label
+                self.emit_instruction(IrInstruction::Label {
+                    name: end_label,
+                });
+            }
+
+            Stmt::PrintStmt { format_string, args } => {
+                let format_value = self.generate_expr(format_string);
+                let mut arg_values = Vec::new();
+                
+                for arg in args {
+                    arg_values.push(self.generate_expr(arg));
+                }
+
+                self.emit_instruction(IrInstruction::Print {
+                    format_string: format_value,
+                    args: arg_values,
+                });
+            }
+
+            Stmt::Function { .. } => {
+                // Functions are handled at the top level
+                panic!("Nested functions not supported");
+            }
+        }
+    }
+
+    /// Generate IR for an expression, returning the value
+    fn generate_expr(&mut self, expr: &Expr) -> IrValue {
+        match expr {
+            Expr::Integer(i) => IrValue::IntConstant(*i),
+            
+            Expr::Float(f) => IrValue::FloatConstant(*f),
+            
+            Expr::Char(c) => IrValue::CharConstant(*c),
+            
+            Expr::String(s) => {
+                let label = self.get_string_label(s);
+                IrValue::StringConstant(label)
+            }
+            
+            Expr::Identifier(name) => {
+                // Load the variable value
+                let temp = self.new_temp();
+                let var_type = self.infer_identifier_type(name);
+                
+                self.emit_instruction(IrInstruction::Load {
+                    dest: temp.clone(),
+                    src: IrValue::Local(name.clone()),
+                    var_type,
+                });
+                
+                temp
+            }
+            
+            Expr::Binary { left, operator, right } => {
+                let left_value = self.generate_expr(left);
+                let right_value = self.generate_expr(right);
+                let result_temp = self.new_temp();
+                let op = IrBinaryOp::from(operator.clone());
+                let expr_type = self.infer_expr_type(expr);
+                
+                self.emit_instruction(IrInstruction::BinaryOp {
+                    dest: result_temp.clone(),
+                    op,
+                    left: left_value,
+                    right: right_value,
+                    var_type: expr_type,
+                });
+                
+                result_temp
+            }
+            
+            Expr::Unary { operator, operand } => {
+                let operand_value = self.generate_expr(operand);
+                let result_temp = self.new_temp();
+                let op = match operator {
+                    TokenType::Minus => IrUnaryOp::Neg,
+                    TokenType::LogicalNot => IrUnaryOp::Not,
+                    _ => panic!("Unsupported unary operator: {:?}", operator),
+                };
+                let expr_type = self.infer_expr_type(expr);
+                
+                self.emit_instruction(IrInstruction::UnaryOp {
+                    dest: result_temp.clone(),
+                    op,
+                    operand: operand_value,
+                    var_type: expr_type,
+                });
+                
+                result_temp
+            }
+            
+            Expr::Call { callee, arguments } => {
+                let func_name = match callee.as_ref() {
+                    Expr::Identifier(name) => name.clone(),
+                    _ => panic!("Only simple function calls supported"),
+                };
+                
+                let mut arg_values = Vec::new();
+                for arg in arguments {
+                    arg_values.push(self.generate_expr(arg));
+                }
+                
+                let result_temp = self.new_temp();
+                let return_type = IrType::Int; // Default assumption
+                
+                self.emit_instruction(IrInstruction::Call {
+                    dest: Some(result_temp.clone()),
+                    func: func_name,
+                    args: arg_values,
+                    return_type,
+                });
+                
+                result_temp
+            }
+            
+            Expr::Assignment { name, value } => {
+                let value_result = self.generate_expr(value);
+                let var_type = self.infer_identifier_type(name);
+                
+                self.emit_instruction(IrInstruction::Store {
+                    value: value_result.clone(),
+                    dest: IrValue::Local(name.clone()),
+                    var_type,
+                });
+                
+                value_result
+            }
+        }
+    }
+
+    /// Infer the type of an expression (simplified type inference)
+    fn infer_expr_type(&self, expr: &Expr) -> IrType {
+        match expr {
+            Expr::Integer(_) => IrType::Int,
+            Expr::Float(_) => IrType::Float,
+            Expr::Char(_) => IrType::Char,
+            Expr::String(_) => IrType::String,
+            Expr::Identifier(name) => self.infer_identifier_type(name),
+            Expr::Binary { left, operator, .. } => {
+                match operator {
+                    TokenType::Equal | TokenType::NotEqual | 
+                    TokenType::LessThan | TokenType::LessEqual |
+                    TokenType::GreaterThan | TokenType::GreaterEqual => IrType::Int, // Boolean as int
+                    _ => self.infer_expr_type(left), // Use left operand type
+                }
+            }
+            Expr::Unary { operand, .. } => self.infer_expr_type(operand),
+            Expr::Call { .. } => IrType::Int, // Default assumption
+            Expr::Assignment { name, .. } => self.infer_identifier_type(name),
+        }
+    }
+
+    /// Infer the type of an identifier (simplified - would need symbol table in real compiler)
+    fn infer_identifier_type(&self, _name: &str) -> IrType {
+        // In a real compiler, this would look up the symbol table
+        // For now, we'll default to int
+        IrType::Int
+    }
+}
+
+impl Default for IrGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}

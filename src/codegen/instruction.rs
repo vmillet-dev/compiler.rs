@@ -1,15 +1,17 @@
-#[derive(Debug, Clone)]
+use std::fmt;
+
+#[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     Mov, Movsd, Movzx, Movq, Lea,
     Push, Pop,
-    Add, Sub, Imul, Idiv, Inc, Neg, Cqo,
+    Add, Sub, Imul, Idiv, Inc, Neg, Cqo, Cdq, Addsd, Subsd, Mulsd, Divsd,
     Cmp, Test,
     Sete, Setne, Setl, Setle, Setg, Setge,
     Jmp, Je, Jle, Call, Ret,
     And, Or, Xor,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Register {
     Rax, Rbp, Rsp, Rcx, Rdx, R8, R9,
     Eax, Edx, R8d, R9d,
@@ -26,7 +28,7 @@ pub enum Operand {
     String(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Size {
     Byte, Word, Dword, Qword,
 }
@@ -48,6 +50,11 @@ impl Instruction {
             Instruction::Inc => "inc",
             Instruction::Neg => "neg",
             Instruction::Cqo => "cqo",
+            Instruction::Cdq => "cdq",
+            Instruction::Addsd => "addsd",
+            Instruction::Subsd => "subsd",
+            Instruction::Mulsd => "mulsd",
+            Instruction::Divsd => "divsd",
             Instruction::Cmp => "cmp",
             Instruction::Test => "test",
             Instruction::Sete => "sete",
@@ -88,6 +95,36 @@ impl Register {
             Register::Xmm2 => "xmm2",
             Register::Xmm3 => "xmm3",
         }
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+impl fmt::Display for Size {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let size_str = match self {
+            Size::Byte => "byte",
+            Size::Word => "word",
+            Size::Dword => "dword",
+            Size::Qword => "qword",
+        };
+        write!(f, "{}", size_str)
     }
 }
 

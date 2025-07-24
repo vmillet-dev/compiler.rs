@@ -1,14 +1,20 @@
 use std::{env, fs};
-use compiler_minic::codegen::Codegen;
+use compiler_minic::codegen::{Codegen, IrCodegen};
 use compiler_minic::lexer::Lexer;
 use compiler_minic::parser::Parser;
+use compiler_minic::ir::{IrGenerator, IrOptimizer};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
-    let code = if args.len() > 1 {
+    // Check for IR flag
+    let use_ir = args.contains(&"--ir".to_string());
+    
+    // Find the filename (first non-flag argument)
+    let filename = args.iter().skip(1).find(|arg| !arg.starts_with("--"));
+    
+    let code = if let Some(filename) = filename {
         // File argument provided
-        let filename = &args[1];
         match fs::read_to_string(filename) {
             Ok(content) => {
                 println!("Compiling file: {}", filename);
@@ -46,16 +52,55 @@ fn main() {
         Ok(tokens) => {
             let mut parser = Parser::new(tokens);
             let ast = parser.parse();
-            let codegen = Codegen::new();
-            let asm_code = codegen.generate(&ast);
+            
+            // Use the IR flag we determined earlier
+            
+            if use_ir {
+                println!("Using IR-based compilation pipeline...");
+                
+                // Generate IR from AST
+                let mut ir_generator = IrGenerator::new();
+                let ir_program = ir_generator.generate(&ast);
+                
+                // Save IR to file for inspection
+                match fs::write("output.ir", format!("{}", ir_program)) {
+                    Ok(_) => println!("IR code saved to output.ir"),
+                    Err(e) => eprintln!("Error writing IR file: {}", e),
+                }
+                
+                // Optimize IR
+                let mut optimizer = IrOptimizer::new();
+                let optimized_ir = optimizer.optimize(ir_program);
+                
+                // Save optimized IR to file
+                match fs::write("output_optimized.ir", format!("{}", optimized_ir)) {
+                    Ok(_) => println!("Optimized IR code saved to output_optimized.ir"),
+                    Err(e) => eprintln!("Error writing optimized IR file: {}", e),
+                }
+                
+                // Generate assembly from IR
+                let ir_codegen = IrCodegen::new();
+                let asm_code = ir_codegen.generate(&optimized_ir);
+                
+                match fs::write("output_ir.asm", asm_code) {
+                    Ok(_) => println!("Assembly code (from IR) saved to output_ir.asm"),
+                    Err(e) => eprintln!("Error writing assembly file: {}", e),
+                }
+            } else {
+                println!("Using direct AST-to-assembly compilation...");
+                
+                // Original direct AST to assembly compilation
+                let codegen = Codegen::new();
+                let asm_code = codegen.generate(&ast);
 
-            match fs::write("output.asm", asm_code) {
-                Ok(_) => println!("Code assembleur sauvegardé dans output.asm"),
-                Err(e) => eprintln!("Erreur lors de l'écriture du fichier: {}", e),
+                match fs::write("output.asm", asm_code) {
+                    Ok(_) => println!("Assembly code saved to output.asm"),
+                    Err(e) => eprintln!("Error writing assembly file: {}", e),
+                }
             }
         }
         Err(e) => {
-            eprintln!("Erreur de lexing: {}", e);
+            eprintln!("Lexing error: {}", e);
         }
     }
 }
