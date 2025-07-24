@@ -32,7 +32,7 @@ impl ExpressionGenerator for super::Codegen {
                 ], Some(&format!("load char '{}'", c)));
             }
             Expr::String(s) => {
-                // CORRECTION: Utiliser RIP-relative addressing pour les chaînes
+                // CORRECTION: Use RIP-relative addressing for strings
                 if let Some(label) = self.data_strings.get(s) {
                     self.emit_instruction(Instruction::Lea, vec![
                         Operand::Register(Register::Rax), 
