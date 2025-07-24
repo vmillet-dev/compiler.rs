@@ -15,6 +15,7 @@ pub struct IrGenerator {
     string_constants: HashMap<String, String>,
     /// String label counter
     string_label_counter: usize,
+    local_types: HashMap<String, IrType>,
 }
 
 impl IrGenerator {
@@ -25,11 +26,15 @@ impl IrGenerator {
             current_function: None,
             string_constants: HashMap::new(),
             string_label_counter: 0,
+            local_types: HashMap::new(),
         }
     }
 
     /// Generate IR from AST
     pub fn generate(&mut self, ast: &[Stmt]) -> IrProgram {
+        // First pass: collect variable types for symbol table
+        self.collect_variable_types(ast);
+        
         let mut functions = Vec::new();
 
         for stmt in ast {
@@ -369,7 +374,11 @@ impl IrGenerator {
                 }
                 
                 let result_temp = self.new_temp();
-                let return_type = IrType::Int; // Default assumption
+                let return_type = match func_name.as_str() {
+                    "printf" | "println" => IrType::Int, // printf returns int (number of chars printed)
+                    "main" => IrType::Int, // main function returns int
+                    _ => IrType::Int, // Default fallback for unknown functions
+                };
                 
                 self.emit_instruction(IrInstruction::Call {
                     dest: Some(result_temp.clone()),
@@ -413,21 +422,50 @@ impl IrGenerator {
                 }
             }
             Expr::Unary { operand, .. } => self.infer_expr_type(operand),
-            Expr::Call { .. } => IrType::Int, // Default assumption
+            Expr::Call { callee, .. } => {
+                if let Expr::Identifier(func_name) = callee.as_ref() {
+                    match func_name.as_str() {
+                        "printf" | "println" => IrType::Int, // printf returns int
+                        "main" => IrType::Int, // main function returns int
+                        _ => IrType::Int, // Default fallback for unknown functions
+                    }
+                } else {
+                    IrType::Int // Default fallback
+                }
+            }
             Expr::Assignment { name, .. } => self.infer_identifier_type(name),
         }
     }
 
-    /// Infer the type of an identifier (simplified - would need symbol table in real compiler)
-    fn infer_identifier_type(&self, name: &str) -> IrType {
-        // In a real compiler, this would look up the symbol table
-        // For now, we'll use some basic heuristics based on variable names
-        match name {
-            "pi" => IrType::Float,
-            "letter" => IrType::Char,
-            "number" => IrType::Int,
-            _ => IrType::Int, // Default to int
+    /// Collect variable types from AST for symbol table
+    fn collect_variable_types(&mut self, ast: &[Stmt]) {
+        for stmt in ast {
+            match stmt {
+                Stmt::Function { body, .. } => {
+                    self.collect_variable_types(body);
+                }
+                Stmt::VarDecl { var_type, name, .. } => {
+                    // Store variable type for later use
+                    let ir_type = IrType::from(var_type.clone());
+                    self.local_types.insert(name.clone(), ir_type);
+                }
+                Stmt::If { then_branch, .. } => {
+                    self.collect_variable_types(then_branch);
+                }
+                Stmt::Block(stmts) => {
+                    self.collect_variable_types(stmts);
+                }
+                _ => {}
+            }
         }
+    }
+
+    /// Infer the type of an identifier using symbol table lookup
+    fn infer_identifier_type(&self, name: &str) -> IrType {
+        // Look up the variable type in the symbol table
+        self.local_types.get(name)
+            .cloned()
+            .unwrap_or(IrType::Int) // Default fallback
     }
 }
 
