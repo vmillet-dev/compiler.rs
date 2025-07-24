@@ -3,6 +3,7 @@ use compiler_minic::codegen::{Codegen, IrCodegen};
 use compiler_minic::lexer::Lexer;
 use compiler_minic::parser::Parser;
 use compiler_minic::ir::{IrGenerator, IrOptimizer};
+use compiler_minic::semantic::{MemorySafetyChecker, MemorySafetySeverity};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -52,6 +53,32 @@ fn main() {
         Ok(tokens) => {
             let mut parser = Parser::new(tokens);
             let ast = parser.parse();
+            
+            for error in parser.get_errors() {
+                eprintln!("Parser error: {}", error);
+            }
+            
+            let mut memory_checker = MemorySafetyChecker::new();
+            match memory_checker.check_memory_safety(&ast) {
+                Ok(warnings) => {
+                    for warning in warnings {
+                        match warning.severity() {
+                            MemorySafetySeverity::Error => {
+                                eprintln!("Memory safety error: {}", warning.message());
+                            }
+                            MemorySafetySeverity::Warning => {
+                                println!("Memory safety warning: {}", warning.message());
+                            }
+                            MemorySafetySeverity::Info => {
+                                println!("Memory safety info: {}", warning.message());
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Memory safety analysis error: {}", e);
+                }
+            }
             
             // Use the IR flag we determined earlier
             

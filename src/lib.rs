@@ -2,8 +2,9 @@ use crate::error::CompilerError;
 
 pub mod lexer;
 pub mod error;
-
+pub mod types;
 pub mod parser;
+pub mod semantic;
 
 pub mod ir;
 
