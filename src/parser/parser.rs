@@ -1,9 +1,12 @@
 use crate::lexer::{Token, TokenType};
 use crate::parser::ast::{Expr, Stmt};
+use crate::types::Type;
+use crate::error::error::CompilerError;
 
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    errors: Vec<CompilerError>,
 }
 
 impl Parser {
@@ -12,7 +15,11 @@ impl Parser {
         if tokens.is_empty() || tokens.last().unwrap().token_type != TokenType::Eof {
             tokens.push(Token::new(TokenType::Eof, String::new(), 1, 1));
         }
-        Parser { tokens, current: 0 }
+        Parser { tokens, current: 0, errors: Vec::new() }
+    }
+    
+    pub fn get_errors(&self) -> &[CompilerError] {
+        &self.errors
     }
 
     pub fn parse(&mut self) -> Vec<Stmt> {
@@ -22,10 +29,14 @@ impl Parser {
                 stmts.push(func);
             } else {
                 // Report error for unparseable top-level constructs
-                eprintln!("Erreur d'analyse: Construction de niveau supérieur non reconnue à {}:{}", 
-                         self.peek().line, self.peek().column);
-                // Skip the problematic token to continue parsing
-                self.advance();
+                let token = self.peek();
+                self.report_error(
+                    "Unrecognized top-level construct",
+                    Some("Expected function declaration"),
+                    token.line,
+                    token.column
+                );
+                self.synchronize();
             }
         }
         stmts
@@ -43,14 +54,14 @@ impl Parser {
             if let Some(stmt) = self.statement() {
                 body.push(stmt);
             } else {
-                self.advance();
+                self.synchronize();
             }
         }
 
         self.consume(TokenType::RightBrace)?;
 
         Some(Stmt::Function {
-            return_type,
+            return_type: Type::from(return_type),
             name,
             body,
         })
@@ -95,7 +106,13 @@ impl Parser {
                     while !self.check(&TokenType::RightParen) && !self.is_at_end() {
                         // Expect a comma before each additional argument
                         if !self.match_token(&TokenType::Comma) {
-                            eprintln!("Erreur d'analyse: Virgule attendue entre les arguments de printf à {}:{}", self.peek().line, self.peek().column);
+                            let token = self.peek();
+                            self.report_error(
+                                "Expected comma between printf arguments",
+                                Some("Add ',' between arguments"),
+                                token.line,
+                                token.column
+                            );
                             return None;
                         }
                         
@@ -103,9 +120,14 @@ impl Parser {
                         if let Some(expr) = self.expression() {
                             args.push(expr);
                         } else {
-                            eprintln!("Erreur d'analyse: Expression attendue après la virgule à {}:{}", self.peek().line, self.peek().column);
-                            // Skip the problematic token to avoid infinite loop
-                            self.advance();
+                            let token = self.peek();
+                            self.report_error(
+                                "Expected expression after comma",
+                                Some("Provide a valid expression as argument"),
+                                token.line,
+                                token.column
+                            );
+                            self.synchronize();
                             return None;
                         }
                     }
@@ -118,7 +140,13 @@ impl Parser {
                     // Simple expression case: println(expr)
                     // Check that there are no additional arguments
                     if self.check(&TokenType::Comma) {
-                        eprintln!("Erreur d'analyse: println avec expression simple ne peut pas avoir d'arguments supplémentaires à {}:{}", self.peek().line, self.peek().column);
+                        let token = self.peek();
+                        self.report_error(
+                            "Simple println cannot have additional arguments",
+                            Some("Use format string for multiple arguments"),
+                            token.line,
+                            token.column
+                        );
                         return None;
                     }
                     
@@ -143,7 +171,7 @@ impl Parser {
                 None
             };
             self.consume(TokenType::Semicolon)?;
-            return Some(Stmt::VarDecl { var_type, name, initializer });
+            return Some(Stmt::VarDecl { var_type: Type::from(var_type), name, initializer });
         }
 
         let expr = self.expression()?;
@@ -291,6 +319,15 @@ impl Parser {
         if self.check(&expected) {
             Some(self.advance())
         } else {
+            let token = self.peek();
+            let expected_str = format!("{:?}", expected);
+            let found_str = format!("{:?}", token.token_type);
+            self.report_error(
+                &format!("Expected {}, found {}", expected_str, found_str),
+                Some(&self.suggest_fix_for_token(&expected)),
+                token.line,
+                token.column
+            );
             None
         }
     }
@@ -354,6 +391,54 @@ impl Parser {
     fn is_at_end(&self) -> bool {
         self.current >= self.tokens.len() || self.peek().token_type == TokenType::Eof
     }
+    
+    fn synchronize(&mut self) {
+        self.advance();
+        
+        while !self.is_at_end() {
+            if self.previous().token_type == TokenType::Semicolon {
+                return;
+            }
+            
+            match self.peek().token_type {
+                TokenType::If | TokenType::Return | TokenType::Int | 
+                TokenType::FloatType | TokenType::CharType | TokenType::Void |
+                TokenType::Println => return,
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+    }
+    
+    fn previous(&self) -> &Token {
+        if self.current == 0 {
+            &self.tokens[0]
+        } else {
+            &self.tokens[self.current - 1]
+        }
+    }
+    
+    fn report_error(&mut self, message: &str, suggestion: Option<&str>, line: usize, column: usize) {
+        let error = CompilerError::parse_error(message.to_string(), line, column);
+        self.errors.push(error);
+        eprintln!("Parse Error at {}:{}: {}", line, column, message);
+        if let Some(suggestion) = suggestion {
+            eprintln!("  Suggestion: {}", suggestion);
+        }
+    }
+    
+    fn suggest_fix_for_token(&self, expected: &TokenType) -> String {
+        match expected {
+            TokenType::Semicolon => "Add ';' at the end of the statement".to_string(),
+            TokenType::LeftBrace => "Add '{' to start a block".to_string(),
+            TokenType::RightBrace => "Add '}' to close the block".to_string(),
+            TokenType::LeftParen => "Add '(' to start parameter list".to_string(),
+            TokenType::RightParen => "Add ')' to close parameter list".to_string(),
+            TokenType::Comma => "Add ',' to separate items".to_string(),
+            _ => format!("Add the expected token: {:?}", expected),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -385,7 +470,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         match &result[0] {
             Stmt::Function { return_type, name, body } => {
-                assert_eq!(*return_type, TokenType::Int);
+                assert_eq!(*return_type, Type::from(TokenType::Int));
                 assert_eq!(*name, "main");
                 assert!(body.is_empty());
             }
@@ -415,7 +500,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         match &result[0] {
             Stmt::Function { return_type, name, body } => {
-                assert_eq!(*return_type, TokenType::Int);
+                assert_eq!(*return_type, Type::from(TokenType::Int));
                 assert_eq!(*name, "test");
                 assert_eq!(body.len(), 1);
                 match &body[0] {
@@ -459,7 +544,7 @@ mod tests {
         if let Some(stmt) = parser.statement() {
             match stmt {
                 Stmt::VarDecl { var_type, name, initializer } => {
-                    assert_eq!(var_type, TokenType::Int);
+                    assert_eq!(var_type, Type::from(TokenType::Int));
                     assert_eq!(name, "x");
                     assert_eq!(initializer, Some(Expr::Integer(10)));
                 }
