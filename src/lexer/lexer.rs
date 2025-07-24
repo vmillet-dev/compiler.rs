@@ -2,7 +2,6 @@ use super::token::{Token, TokenType};
 use crate::error::CompilerError;
 use crate::Result;
 
-/// Analyseur lexical (lexer) pour le langage
 pub struct Lexer {
     input: Vec<char>,
     current: usize,
@@ -12,7 +11,6 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    /// Crée un nouveau lexer pour l'entrée donnée
     pub fn new(input: &str) -> Self {
         Lexer {
             input: input.chars().collect(),
@@ -23,7 +21,7 @@ impl Lexer {
         }
     }
 
-    /// Tokenise l'entrée complète et retourne la liste des tokens
+    /// Tokenizes the complete input and returns the list of tokens
     pub fn tokenize(&mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
 
@@ -38,7 +36,6 @@ impl Lexer {
             let start_line = self.line;
             let start_column = self.column;
 
-            // Essayer de scanner un token
             let token_result = self.scan_token();
 
             match token_result {
@@ -47,15 +44,14 @@ impl Lexer {
                     tokens.push(Token::new(token_type, lexeme, start_line, start_column));
                 }
                 Ok(None) => {
-                    // Token ignoré (comme les commentaires), continuer
                     continue;
                 }
                 Err(message) => {
-                    return Err(CompilerError::LexError {
+                    return Err(CompilerError::lex_error(
                         message,
-                        line: start_line,
-                        column: start_column,
-                    });
+                        start_line,
+                        start_column,
+                    ));
                 }
             }
         }
@@ -74,7 +70,6 @@ impl Lexer {
         let c = self.advance();
 
         match c {
-            // Délimiteurs simples
             '(' => Ok(Some(TokenType::LeftParen)),
             ')' => Ok(Some(TokenType::RightParen)),
             '{' => Ok(Some(TokenType::LeftBrace)),
@@ -89,17 +84,16 @@ impl Lexer {
             '/' => {
                 if self.match_char('/') {
                     self.skip_line_comment();
-                    Ok(None) // Retourne None pour ignorer le commentaire
+                    Ok(None) // Return None to ignore the comment
                 } else if self.match_char('*') {
                     self.skip_block_comment()?;
-                    Ok(None) // Retourne None pour ignorer le commentaire
+                    Ok(None) // Return None to ignore the comment
                 } else {
                     Ok(Some(TokenType::Divide))
                 }
             }
             '%' => Ok(Some(TokenType::Modulo)),
 
-            // Opérateurs avec potentiel double caractère
             '=' => {
                 if self.match_char('=') {
                     Ok(Some(TokenType::Equal))
@@ -132,35 +126,31 @@ impl Lexer {
                 if self.match_char('&') {
                     Ok(Some(TokenType::LogicalAnd))
                 } else {
-                    Err("Caractère '&' inattendu".to_string())
+                    Err("Unexpected character '&'".to_string())
                 }
             }
             '|' => {
                 if self.match_char('|') {
                     Ok(Some(TokenType::LogicalOr))
                 } else {
-                    Err("Caractère '|' inattendu".to_string())
+                    Err("Unexpected character '|'".to_string())
                 }
             }
 
-            // Chaînes de caractères
             '"' => Ok(Some(self.string()?)),
 
-            // Caractères
             '\'' => Ok(Some(self.char_literal()?)),
 
-            // Nombres
             c if c.is_ascii_digit() => Ok(Some(self.number()?)),
 
-            // Identificateurs et mots-clés
+            // Identifiers and keywords
             c if c.is_ascii_alphabetic() || c == '_' => Ok(Some(self.identifier()?)),
 
-            _ => Err(format!("Caractère inattendu: '{}'", c)),
+            _ => Err(format!("Unexpected character: '{}'", c)),
         }
     }
 
     fn string(&mut self) -> std::result::Result<TokenType, String> {
-        // Le code reste identique
         let mut value = String::new();
 
         while self.peek() != '"' && !self.is_at_end() {
@@ -170,7 +160,7 @@ impl Lexer {
             }
 
             if self.peek() == '\\' {
-                self.advance(); // Consommer le '\'
+                self.advance(); // Consume the '\'
                 match self.advance() {
                     'n' => value.push('\n'),
                     't' => value.push('\t'),
@@ -186,23 +176,21 @@ impl Lexer {
         }
 
         if self.is_at_end() {
-            return Err("Chaîne de caractères non terminée".to_string());
+            return Err("Unterminated string literal".to_string());
         }
 
-        // Consommer le '"' fermant
         self.advance();
 
         Ok(TokenType::String(value))
     }
 
     fn char_literal(&mut self) -> std::result::Result<TokenType, String> {
-        // Le code reste identique
         if self.is_at_end() {
-            return Err("Caractère littéral non terminé".to_string());
+            return Err("Unterminated character literal".to_string());
         }
 
         let c = if self.peek() == '\\' {
-            self.advance(); // Consommer le '\'
+            self.advance(); // Consume the '\'
             match self.advance() {
                 'n' => '\n',
                 't' => '\t',
@@ -217,23 +205,21 @@ impl Lexer {
         };
 
         if self.peek() != '\'' {
-            return Err("Caractère littéral non terminé".to_string());
+            return Err("Unterminated character literal".to_string());
         }
 
-        self.advance(); // Consommer le '\'' fermant
+        self.advance(); // Consume the closing '\''
 
         Ok(TokenType::Char(c))
     }
 
     fn number(&mut self) -> std::result::Result<TokenType, String> {
-        // Le code reste identique
         while self.peek().is_ascii_digit() {
             self.advance();
         }
 
-        // Vérifier s'il y a une partie décimale
         if self.peek() == '.' && self.peek_next().is_ascii_digit() {
-            self.advance(); // Consommer le '.'
+            self.advance(); // Consume the '.'
 
             while self.peek().is_ascii_digit() {
                 self.advance();
@@ -250,7 +236,6 @@ impl Lexer {
     }
 
     fn identifier(&mut self) -> std::result::Result<TokenType, String> {
-        // Le code reste identique
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
@@ -284,8 +269,8 @@ impl Lexer {
     fn skip_block_comment(&mut self) -> std::result::Result<(), String> {
         while !self.is_at_end() {
             if self.peek() == '*' && self.peek_next() == '/' {
-                self.advance(); // Consommer '*'
-                self.advance(); // Consommer '/'
+                self.advance(); // Consume '*'
+                self.advance(); // Consume '/'
                 return Ok(());
             }
 
@@ -567,7 +552,6 @@ mod tests {
 
     #[test]
     fn test_nested_comments() {
-        // Test que les commentaires de ligne dans les commentaires de bloc sont ignorés
         let mut lexer = Lexer::new("int /* block // line comment inside */ x;");
         let tokens = lexer.tokenize().unwrap();
 
@@ -743,6 +727,6 @@ mod tests {
         let tokens = lexer.tokenize().unwrap();
 
         assert_eq!(tokens[0].token_type, TokenType::String("line1\nline2".to_string()));
-        assert_eq!(tokens[0].line, 1); // Commence à la ligne 1
+        assert_eq!(tokens[0].line, 1); // Starts at line 1
     }
 }

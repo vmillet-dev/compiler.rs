@@ -2,16 +2,14 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
-    // Litteraux
     Integer(i64),
     Float(f64),
     String(String),
     Char(char),
 
-    // Identificateurs et mots-clés
+    // Identifiers and keywords
     Identifier(String),
 
-    // Mots-clés
     Int,
     FloatType,
     CharType,
@@ -25,14 +23,12 @@ pub enum TokenType {
     Continue,
     Println,
 
-    // Opérateurs arithmétiques
     Plus,
     Minus,
     Multiply,
     Divide,
     Modulo,
 
-    // Opérateurs de comparaison
     Equal,
     NotEqual,
     LessThan,
@@ -40,15 +36,12 @@ pub enum TokenType {
     GreaterThan,
     GreaterEqual,
 
-    // Opérateurs logiques
     LogicalAnd,
     LogicalOr,
     LogicalNot,
 
-    // Opérateurs d'assignation
     Assign,
 
-    // Délimiteurs
     LeftParen,
     RightParen,
     LeftBrace,
@@ -58,7 +51,6 @@ pub enum TokenType {
     Semicolon,
     Comma,
 
-    // Fin de fichier
     Eof,
 }
 
