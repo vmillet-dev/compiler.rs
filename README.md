@@ -29,15 +29,29 @@ compiler-minic/
 │   │   ├── mod.rs           # Parser module exports
 │   │   ├── parser.rs        # Recursive descent parser
 │   │   └── ast.rs           # Abstract Syntax Tree definitions
+│   ├── ir/                  # Intermediate Representation
+│   │   ├── mod.rs           # IR module exports
+│   │   ├── ir.rs            # IR instruction definitions
+│   │   ├── generator.rs     # AST to IR translation
+│   │   └── optimizer.rs     # IR optimization passes
 │   └── codegen/             # Code generation
 │       ├── mod.rs           # Codegen module exports
-│       └── codegen.rs       # x86-64 assembly code generator
+│       ├── codegen.rs       # Direct x86-64 assembly code generator
+│       ├── ir_codegen.rs    # IR to x86-64 assembly code generator
+│       ├── analyzer.rs      # AST analysis for variable types
+│       ├── expression.rs    # Expression code generation
+│       ├── statement.rs     # Statement code generation
+│       ├── emitter.rs       # Assembly instruction emission
+│       └── instruction.rs   # x86-64 instruction definitions
+├── tests/
+│   └── integration_tests.rs # Integration tests for compilation pipeline
 ├── .github/
 │   └── workflows/
 │       └── ci.yml           # GitHub Actions CI/CD pipeline
 ├── Cargo.toml               # Rust project configuration
 ├── .gitignore               # Git ignore rules
-└── output.asm               # Generated assembly output (created at runtime)
+├── output.asm               # Generated assembly output (direct compilation)
+└── output_ir.asm            # Generated assembly output (IR compilation)
 ```
 
 ## Components
@@ -93,28 +107,76 @@ Each error includes line and column information for precise error reporting.
 - Parses control flow statements (`if`, `return`)
 - Includes comprehensive unit tests for all language constructs
 
-### 4. Code Generation (`src/codegen/`)
+### 4. Intermediate Representation (`src/ir/`)
 
-**`codegen.rs`**: Implements x86-64 assembly code generation:
+**`ir.rs`**: Defines the IR instruction set and data structures:
+- **IR Instructions**: Load, store, arithmetic operations, control flow, function calls
+- **IR Values**: Temporary variables, constants, memory locations
+- **IR Types**: Integer, float, char, void type representations
+- **IR Program**: Complete program representation with functions and basic blocks
+
+**`generator.rs`**: Implements AST to IR translation:
+- Converts AST expressions to IR instruction sequences
+- Handles variable declarations and assignments
+- Translates control flow statements to IR branches
+- Manages temporary variable allocation
+- Supports function definitions and calls
+
+**`optimizer.rs`**: Implements IR optimization passes:
+- **Constant Folding**: Evaluates constant expressions at compile time
+- **Dead Code Elimination**: Removes unreachable code and unused variables
+- **Copy Propagation**: Replaces variable copies with direct references
+- **Basic Block Optimization**: Optimizes within basic blocks
+
+### 5. Code Generation (`src/codegen/`)
+
+**`codegen.rs`**: Implements direct x86-64 assembly code generation:
 - **Instruction Set**: Defines x86-64 instructions (`mov`, `add`, `sub`, `call`, etc.)
 - **Register Management**: Handles x86-64 registers (`rax`, `rbp`, `rsp`, etc.)
 - **Operand Types**: Immediate values, registers, memory locations, labels
-- **Code Generation**:
-  - Function prologues and epilogues
-  - Variable storage on the stack
-  - Expression evaluation with proper register usage
-  - Control flow (conditional jumps)
-  - Function calls with proper calling conventions
-  - Built-in `println` function support
+- **Direct Code Generation**: AST to assembly without intermediate representation
 
-### 5. Main Application (`src/main.rs`)
+**`ir_codegen.rs`**: Implements IR to x86-64 assembly translation:
+- Converts optimized IR instructions to x86-64 assembly
+- Handles register allocation for IR temporary variables
+- Implements proper calling conventions for IR function calls
+- Manages stack layout for IR variable storage
 
-Demonstrates the complete compilation pipeline:
-1. **Input**: C-like source code (embedded as string literal)
+**`analyzer.rs`**: Provides AST analysis utilities:
+- Variable type inference and collection
+- Format string analysis for print statements
+- Symbol table management for code generation
+
+**`expression.rs`**, **`statement.rs`**: Modular code generation:
+- Expression evaluation with proper register usage
+- Statement translation (declarations, control flow, returns)
+- Function prologues and epilogues
+- Built-in `println` function support
+
+**`emitter.rs`**, **`instruction.rs`**: Assembly output infrastructure:
+- Structured assembly instruction emission
+- x86-64 instruction and operand definitions
+- Comment generation for readable assembly output
+
+### 6. Main Application (`src/main.rs`)
+
+Demonstrates the complete compilation pipeline with two modes:
+
+**Direct Compilation (default)**:
+1. **Input**: C-like source code (embedded as string literal or file)
 2. **Lexing**: Tokenizes the source code
 3. **Parsing**: Builds an AST from tokens
-4. **Code Generation**: Generates x86-64 assembly
+4. **Direct Code Generation**: Generates x86-64 assembly directly from AST
 5. **Output**: Writes assembly to `output.asm`
+
+**IR-Based Compilation (--ir flag)**:
+1. **Input**: C-like source code (embedded as string literal or file)
+2. **Lexing**: Tokenizes the source code
+3. **Parsing**: Builds an AST from tokens
+4. **IR Generation**: Converts AST to intermediate representation
+5. **IR Optimization**: Applies optimization passes (constant folding, dead code elimination)
+6. **IR Code Generation**: Translates optimized IR to x86-64 assembly
+7. **Output**: Writes assembly to `output_ir.asm`
 
 Example input program:
 ```c
@@ -171,10 +233,23 @@ cargo build
 ```
 
 ### Run the Compiler
+
+#### Direct Compilation (Default)
 ```bash
 cargo run
 ```
-This generates `output.asm` containing the x86-64 assembly code.
+This generates `output.asm` containing the x86-64 assembly code using direct AST-to-assembly translation.
+
+#### IR-Based Compilation
+```bash
+cargo run -- --ir
+```
+This generates `output_ir.asm` containing the x86-64 assembly code using an intermediate representation (IR) pipeline:
+1. **AST → IR**: Converts the Abstract Syntax Tree to intermediate representation
+2. **IR Optimization**: Performs optimizations like constant folding and dead code elimination  
+3. **IR → Assembly**: Translates optimized IR to x86-64 assembly
+
+The IR pipeline provides better optimization opportunities and cleaner code generation architecture.
 
 ### Assemble and Link (Windows)
 ```bash
@@ -184,9 +259,39 @@ gcc -o output.exe output.obj -lmsvcrt
 ```
 
 ### Run Tests
+
+#### Unit Tests
 ```bash
 cargo test
 ```
+Runs unit tests for lexer, parser, and code generation components.
+
+#### Integration Tests
+```bash
+cargo test --test integration_tests
+```
+Runs comprehensive integration tests that validate the complete compilation pipeline by:
+- Compiling actual C code snippets through both direct and IR-based compilation paths
+- Validating IR output structure and instruction patterns
+- Verifying generated assembly contains expected instructions
+- Ensuring both compilation modes produce functionally equivalent results
+
+The integration test suite covers:
+- Variable declarations and assignments
+- Binary and unary arithmetic operations
+- Conditional statements and control flow
+- Print statements with format strings
+- Multiple data types (int, float, char)
+- Complex nested expressions
+- Block statements and variable scoping
+- Comparison operators
+- Expression statements
+
+**Integration Test Structure:**
+Each test compiles a minimal C code snippet and validates:
+1. **IR Structure**: Checks for expected IR instructions (e.g., `%x = alloca i32`, `add i32`, `br %t1`)
+2. **Assembly Output**: Verifies both direct and IR-generated assembly contain expected x86-64 instructions
+3. **Functional Equivalence**: Ensures both compilation paths produce working assembly code
 
 ## CI/CD Pipeline
 
