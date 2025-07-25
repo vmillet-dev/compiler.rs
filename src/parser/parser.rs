@@ -78,6 +78,19 @@ impl Parser {
             return Some(Stmt::Return(expr));
         }
 
+        if self.match_token(&TokenType::LeftBrace) {
+            let mut statements = Vec::new();
+            while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                if let Some(stmt) = self.statement() {
+                    statements.push(stmt);
+                } else {
+                    self.synchronize();
+                }
+            }
+            self.consume(TokenType::RightBrace)?;
+            return Some(Stmt::Block(statements));
+        }
+
         if self.match_token(&TokenType::If) {
             self.consume(TokenType::LeftParen)?;
             let condition = self.expression()?;
