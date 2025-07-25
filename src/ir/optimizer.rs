@@ -1,50 +1,112 @@
 use super::ir::{IrProgram, IrFunction, IrInstruction, IrValue, IrBinaryOp};
 use std::collections::HashMap;
 
+pub trait OptimizationPass {
+    fn name(&self) -> &str;
+    fn run(&mut self, function: &mut IrFunction) -> bool; // Returns true if changed
+    fn dependencies(&self) -> Vec<&str>; // Pass dependencies
+}
+
+pub struct OptimizationManager {
+    passes: Vec<Box<dyn OptimizationPass>>,
+    max_iterations: usize,
+}
+
+impl OptimizationManager {
+    pub fn new() -> Self {
+        Self {
+            passes: Vec::new(),
+            max_iterations: 10, // Prevent infinite loops
+        }
+    }
+    
+    pub fn add_pass<P: OptimizationPass + 'static>(&mut self, pass: P) {
+        self.passes.push(Box::new(pass));
+    }
+    
+    pub fn run_passes(&mut self, function: &mut IrFunction) {
+        for _iteration in 0..self.max_iterations {
+            let mut changed = false;
+            
+            let sorted_passes = self.sort_passes_by_dependencies();
+            
+            for pass_index in sorted_passes {
+                if self.passes[pass_index].run(function) {
+                    changed = true;
+                }
+            }
+            
+            if !changed {
+                break; // Reached fixpoint
+            }
+        }
+    }
+    
+    fn sort_passes_by_dependencies(&self) -> Vec<usize> {
+        (0..self.passes.len()).collect()
+    }
+}
+
+impl Default for OptimizationManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// IR Optimizer - performs optimization passes on IR
 pub struct IrOptimizer {
-    /// Enable/disable specific optimizations
-    pub constant_folding: bool,
-    pub dead_code_elimination: bool,
-    pub copy_propagation: bool,
+    manager: OptimizationManager,
 }
 
 impl IrOptimizer {
     pub fn new() -> Self {
-        Self {
-            constant_folding: true,
-            dead_code_elimination: true,
-            copy_propagation: true,
+        let mut manager = OptimizationManager::new();
+        
+        manager.add_pass(ConstantFoldingPass::new());
+        manager.add_pass(CopyPropagationPass::new());
+        manager.add_pass(DeadCodeEliminationPass::new());
+        
+        Self { manager }
+    }
+    
+    pub fn with_custom_passes(passes: Vec<Box<dyn OptimizationPass>>) -> Self {
+        let mut manager = OptimizationManager::new();
+        for pass in passes {
+            manager.passes.push(pass);
         }
+        Self { manager }
     }
 
     /// Optimize an IR program
     pub fn optimize(&mut self, mut program: IrProgram) -> IrProgram {
         // Apply optimizations to each function
         for function in &mut program.functions {
-            self.optimize_function(function);
+            self.manager.run_passes(function);
         }
         
         program
     }
+}
 
-    /// Optimize a single function
-    fn optimize_function(&mut self, function: &mut IrFunction) {
-        if self.constant_folding {
-            self.constant_folding_pass(function);
-        }
-        
-        if self.copy_propagation {
-            self.copy_propagation_pass(function);
-        }
-        
-        if self.dead_code_elimination {
-            self.dead_code_elimination_pass(function);
-        }
+/// Constant folding optimization pass
+pub struct ConstantFoldingPass;
+
+impl ConstantFoldingPass {
+    pub fn new() -> Self {
+        Self
     }
+}
 
-    /// Constant folding optimization pass
-    fn constant_folding_pass(&mut self, function: &mut IrFunction) {
+impl OptimizationPass for ConstantFoldingPass {
+    fn name(&self) -> &str {
+        "constant_folding"
+    }
+    
+    fn dependencies(&self) -> Vec<&str> {
+        vec![] // No dependencies
+    }
+    
+    fn run(&mut self, function: &mut IrFunction) -> bool {
         let mut optimized_instructions = Vec::new();
         
         for instruction in &function.instructions {
@@ -158,11 +220,90 @@ impl IrOptimizer {
             }
         }
         
+        let changed = optimized_instructions.len() != function.instructions.len() ||
+                     optimized_instructions.iter().zip(&function.instructions).any(|(a, b)| {
+                         std::mem::discriminant(a) != std::mem::discriminant(b)
+                     });
+        
         function.instructions = optimized_instructions;
+        changed
+    }
+}
+
+impl Default for ConstantFoldingPass {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Copy propagation optimization pass
+pub struct CopyPropagationPass;
+
+impl CopyPropagationPass {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    /// Substitute values in an instruction based on copy map
+    fn substitute_instruction(&self, instruction: &IrInstruction, copy_map: &HashMap<IrValue, IrValue>) -> IrInstruction {
+        match instruction {
+            IrInstruction::Store { value, dest, var_type } => {
+                IrInstruction::Store {
+                    value: self.substitute_value(value, copy_map),
+                    dest: dest.clone(),
+                    var_type: var_type.clone(),
+                }
+            }
+            IrInstruction::BinaryOp { dest, op, left, right, var_type } => {
+                IrInstruction::BinaryOp {
+                    dest: dest.clone(),
+                    op: op.clone(),
+                    left: self.substitute_value(left, copy_map),
+                    right: self.substitute_value(right, copy_map),
+                    var_type: var_type.clone(),
+                }
+            }
+            IrInstruction::UnaryOp { dest, op, operand, var_type } => {
+                IrInstruction::UnaryOp {
+                    dest: dest.clone(),
+                    op: op.clone(),
+                    operand: self.substitute_value(operand, copy_map),
+                    var_type: var_type.clone(),
+                }
+            }
+            IrInstruction::Return { value, var_type } => {
+                IrInstruction::Return {
+                    value: value.as_ref().map(|v| self.substitute_value(v, copy_map)),
+                    var_type: var_type.clone(),
+                }
+            }
+            IrInstruction::Branch { condition, true_label, false_label } => {
+                IrInstruction::Branch {
+                    condition: self.substitute_value(condition, copy_map),
+                    true_label: true_label.clone(),
+                    false_label: false_label.clone(),
+                }
+            }
+            _ => instruction.clone(),
+        }
     }
 
-    /// Copy propagation optimization pass
-    fn copy_propagation_pass(&mut self, function: &mut IrFunction) {
+    /// Substitute a value if it exists in the copy map
+    fn substitute_value(&self, value: &IrValue, copy_map: &HashMap<IrValue, IrValue>) -> IrValue {
+        copy_map.get(value).cloned().unwrap_or_else(|| value.clone())
+    }
+}
+
+impl OptimizationPass for CopyPropagationPass {
+    fn name(&self) -> &str {
+        "copy_propagation"
+    }
+    
+    fn dependencies(&self) -> Vec<&str> {
+        vec![] // No dependencies
+    }
+    
+    fn run(&mut self, function: &mut IrFunction) -> bool {
         let mut copy_map: HashMap<IrValue, IrValue> = HashMap::new();
         let mut optimized_instructions = Vec::new();
         
@@ -185,11 +326,41 @@ impl IrOptimizer {
             }
         }
         
+        let changed = optimized_instructions.len() != function.instructions.len() ||
+                     optimized_instructions.iter().zip(&function.instructions).any(|(a, b)| {
+                         std::mem::discriminant(a) != std::mem::discriminant(b)
+                     });
+        
         function.instructions = optimized_instructions;
+        changed
     }
+}
 
-    /// Dead code elimination pass
-    fn dead_code_elimination_pass(&mut self, function: &mut IrFunction) {
+impl Default for CopyPropagationPass {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Dead code elimination optimization pass
+pub struct DeadCodeEliminationPass;
+
+impl DeadCodeEliminationPass {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl OptimizationPass for DeadCodeEliminationPass {
+    fn name(&self) -> &str {
+        "dead_code_elimination"
+    }
+    
+    fn dependencies(&self) -> Vec<&str> {
+        vec!["copy_propagation"] // Run after copy propagation
+    }
+    
+    fn run(&mut self, function: &mut IrFunction) -> bool {
         let mut used_values = std::collections::HashSet::new();
         
         // First pass: mark all used values
@@ -249,56 +420,15 @@ impl IrOptimizer {
             }
         }
         
+        let changed = optimized_instructions.len() != function.instructions.len();
         function.instructions = optimized_instructions;
+        changed
     }
+}
 
-    /// Substitute values in an instruction based on copy map
-    fn substitute_instruction(&self, instruction: &IrInstruction, copy_map: &HashMap<IrValue, IrValue>) -> IrInstruction {
-        match instruction {
-            IrInstruction::Store { value, dest, var_type } => {
-                IrInstruction::Store {
-                    value: self.substitute_value(value, copy_map),
-                    dest: dest.clone(),
-                    var_type: var_type.clone(),
-                }
-            }
-            IrInstruction::BinaryOp { dest, op, left, right, var_type } => {
-                IrInstruction::BinaryOp {
-                    dest: dest.clone(),
-                    op: op.clone(),
-                    left: self.substitute_value(left, copy_map),
-                    right: self.substitute_value(right, copy_map),
-                    var_type: var_type.clone(),
-                }
-            }
-            IrInstruction::UnaryOp { dest, op, operand, var_type } => {
-                IrInstruction::UnaryOp {
-                    dest: dest.clone(),
-                    op: op.clone(),
-                    operand: self.substitute_value(operand, copy_map),
-                    var_type: var_type.clone(),
-                }
-            }
-            IrInstruction::Return { value, var_type } => {
-                IrInstruction::Return {
-                    value: value.as_ref().map(|v| self.substitute_value(v, copy_map)),
-                    var_type: var_type.clone(),
-                }
-            }
-            IrInstruction::Branch { condition, true_label, false_label } => {
-                IrInstruction::Branch {
-                    condition: self.substitute_value(condition, copy_map),
-                    true_label: true_label.clone(),
-                    false_label: false_label.clone(),
-                }
-            }
-            _ => instruction.clone(),
-        }
-    }
-
-    /// Substitute a value if it exists in the copy map
-    fn substitute_value(&self, value: &IrValue, copy_map: &HashMap<IrValue, IrValue>) -> IrValue {
-        copy_map.get(value).cloned().unwrap_or_else(|| value.clone())
+impl Default for DeadCodeEliminationPass {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -11,7 +11,7 @@ pub enum Instruction {
     And, Or, Xor,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Register {
     Rax, Rbp, Rsp, Rcx, Rdx, R8, R9,
     Eax, Edx, R8d, R9d,
@@ -112,7 +112,19 @@ impl fmt::Display for Register {
 
 impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        match self {
+            Operand::Register(reg) => write!(f, "{}", reg),
+            Operand::Immediate(val) => write!(f, "{}", val),
+            Operand::Memory { base, offset } => {
+                if *offset >= 0 {
+                    write!(f, "[{}+{}]", base, offset)
+                } else {
+                    write!(f, "[{}{}]", base, offset)
+                }
+            },
+            Operand::Label(label) => write!(f, "{}", label),
+            Operand::String(s) => write!(f, "{}", s),
+        }
     }
 }
 
@@ -125,23 +137,5 @@ impl fmt::Display for Size {
             Size::Qword => "qword",
         };
         write!(f, "{}", size_str)
-    }
-}
-
-impl Operand {
-    pub fn to_string(&self) -> String {
-        match self {
-            Operand::Register(reg) => reg.to_string().to_string(),
-            Operand::Immediate(val) => val.to_string(),
-            Operand::Memory { base, offset } => {
-                if *offset >= 0 {
-                    format!("[{}+{}]", base.to_string(), offset)
-                } else {
-                    format!("[{}{}]", base.to_string(), offset)
-                }
-            },
-            Operand::Label(label) => label.clone(),
-            Operand::String(s) => s.clone(),
-        }
     }
 }

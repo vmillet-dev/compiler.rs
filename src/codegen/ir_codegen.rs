@@ -221,7 +221,6 @@ impl IrCodegen {
             }
 
             IrInstruction::Store { value, dest, var_type } => {
-                let value_operand = self.ir_value_to_operand(value);
                 let dest_operand = self.ir_value_to_operand(dest);
                 let size = self.ir_type_to_size(var_type);
                 
@@ -242,7 +241,8 @@ impl IrCodegen {
                         ], Some("store float"));
                     }
                     _ => {
-                        // For other types, use register as intermediate if needed
+                        // For other types, get the value operand and use register as intermediate if needed
+                        let value_operand = self.ir_value_to_operand(value);
                         let reg = match size {
                             Size::Byte => Register::Al,
                             Size::Dword => Register::Eax,
@@ -326,10 +326,20 @@ impl IrCodegen {
                         _ => Register::Eax,
                     };
                     
-                    self.emit_instruction_with_comment(Instruction::Mov, vec![
-                        Operand::Register(register),
-                        val_operand
-                    ], Some(&format!("return {}", self.ir_value_to_string(val))));
+                    match var_type {
+                        IrType::Float => {
+                            self.emit_instruction_with_comment(Instruction::Movsd, vec![
+                                Operand::Register(register),
+                                val_operand
+                            ], Some(&format!("return {}", self.ir_value_to_string(val))));
+                        }
+                        _ => {
+                            self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                Operand::Register(register),
+                                val_operand
+                            ], Some(&format!("return {}", self.ir_value_to_string(val))));
+                        }
+                    }
                 } else {
                     self.emit_instruction_with_comment(Instruction::Xor, vec![
                         Operand::Register(Register::Eax),
@@ -388,6 +398,33 @@ impl IrCodegen {
                 self.emit_instruction(Instruction::Mov, vec![dest_operand, src_operand]);
             }
 
+            IrInstruction::Cast { dest, src, dest_type, src_type } => {
+                self.emit_comment(&format!("Cast {} {} to {}", src_type, self.ir_value_to_string(src), dest_type));
+                
+                // For now, implement basic casting by moving the value
+                match (src_type, dest_type) {
+                    (IrType::Int, IrType::Float) => {
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                    (IrType::Float, IrType::Int) => {
+                        // For float to int conversion, use mov for now
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                    _ => {
+                        // For other cases, just move the value
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                }
+            }
             IrInstruction::Comment { text } => {
                 self.emit_comment(text);
             }
@@ -396,17 +433,35 @@ impl IrCodegen {
 
     /// Generate binary operation
     fn generate_binary_op(&mut self, dest: &IrValue, op: &IrBinaryOp, left: &IrValue, right: &IrValue, var_type: &IrType) {
-        let left_operand = self.ir_value_to_operand(left);
-        let right_operand = self.ir_value_to_operand(right);
         let dest_operand = self.ir_value_to_operand(dest);
         
         match var_type {
             IrType::Float => {
-                // Floating point operations
-                self.emit_instruction_with_comment(Instruction::Movsd, vec![
-                    Operand::Register(Register::Xmm0),
-                    left_operand
-                ], Some("load left operand"));
+                // Floating point operations - handle float constants specially
+                match left {
+                    IrValue::FloatConstant(f) => {
+                        let float_bits = f.to_bits() as i64;
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Register(Register::Rax),
+                            Operand::Immediate(float_bits)
+                        ], Some("load float bits"));
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Memory { base: Register::Rsp, offset: -8 },
+                            Operand::Register(Register::Rax)
+                        ], Some("store float to temp memory"));
+                        self.emit_instruction_with_comment(Instruction::Movsd, vec![
+                            Operand::Register(Register::Xmm0),
+                            Operand::Memory { base: Register::Rsp, offset: -8 }
+                        ], Some("load left operand"));
+                    }
+                    _ => {
+                        let left_operand = self.ir_value_to_operand(left);
+                        self.emit_instruction_with_comment(Instruction::Movsd, vec![
+                            Operand::Register(Register::Xmm0),
+                            left_operand
+                        ], Some("load left operand"));
+                    }
+                }
                 
                 let asm_op = match op {
                     IrBinaryOp::Add => Instruction::Addsd,
@@ -419,10 +474,30 @@ impl IrCodegen {
                     }
                 };
                 
-                self.emit_instruction_with_comment(asm_op, vec![
-                    Operand::Register(Register::Xmm0),
-                    right_operand
-                ], Some(&format!("{} operation", op)));
+                match right {
+                    IrValue::FloatConstant(f) => {
+                        let float_bits = f.to_bits() as i64;
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Register(Register::Rax),
+                            Operand::Immediate(float_bits)
+                        ], Some("load float bits"));
+                        self.emit_instruction_with_comment(Instruction::Mov, vec![
+                            Operand::Memory { base: Register::Rsp, offset: -16 },
+                            Operand::Register(Register::Rax)
+                        ], Some("store float to temp memory"));
+                        self.emit_instruction_with_comment(asm_op, vec![
+                            Operand::Register(Register::Xmm0),
+                            Operand::Memory { base: Register::Rsp, offset: -16 }
+                        ], Some(&format!("{} operation", op)));
+                    }
+                    _ => {
+                        let right_operand = self.ir_value_to_operand(right);
+                        self.emit_instruction_with_comment(asm_op, vec![
+                            Operand::Register(Register::Xmm0),
+                            right_operand
+                        ], Some(&format!("{} operation", op)));
+                    }
+                }
                 
                 self.emit_instruction_with_comment(Instruction::Movsd, vec![
                     dest_operand,
@@ -431,6 +506,7 @@ impl IrCodegen {
             }
             _ => {
                 // Integer operations
+                let left_operand = self.ir_value_to_operand(left);
                 self.emit_instruction_with_comment(Instruction::Mov, vec![
                     Operand::Register(Register::Eax),
                     left_operand
@@ -442,6 +518,7 @@ impl IrCodegen {
                     IrBinaryOp::Mul => Instruction::Imul,
                     IrBinaryOp::Div => {
                         // Division requires special handling
+                        let right_operand = self.ir_value_to_operand(right);
                         self.emit_instruction(Instruction::Cdq, vec![]);
                         self.emit_instruction(Instruction::Idiv, vec![right_operand]);
                         self.emit_instruction(Instruction::Mov, vec![dest_operand, Operand::Register(Register::Eax)]);
@@ -449,11 +526,27 @@ impl IrCodegen {
                     }
                     IrBinaryOp::Eq | IrBinaryOp::Ne | IrBinaryOp::Lt | 
                     IrBinaryOp::Le | IrBinaryOp::Gt | IrBinaryOp::Ge => {
-                        // Comparison operations
-                        self.emit_instruction(Instruction::Cmp, vec![
-                            Operand::Register(Register::Eax),
-                            right_operand
-                        ]);
+                        // Comparison operations - handle float constants specially
+                        match right {
+                            IrValue::FloatConstant(f) => {
+                                let float_bits = f.to_bits() as i64;
+                                self.emit_instruction_with_comment(Instruction::Mov, vec![
+                                    Operand::Register(Register::Edx),
+                                    Operand::Immediate(float_bits as i32 as i64) // Truncate to 32-bit to avoid overflow
+                                ], Some("load float bits for comparison"));
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Eax),
+                                    Operand::Register(Register::Edx)
+                                ]);
+                            }
+                            _ => {
+                                let right_operand = self.ir_value_to_operand(right);
+                                self.emit_instruction(Instruction::Cmp, vec![
+                                    Operand::Register(Register::Eax),
+                                    right_operand
+                                ]);
+                            }
+                        }
                         
                         let set_op = match op {
                             IrBinaryOp::Eq => Instruction::Sete,
@@ -479,6 +572,7 @@ impl IrCodegen {
                     }
                 };
                 
+                let right_operand = self.ir_value_to_operand(right);
                 self.emit_instruction_with_comment(asm_op, vec![
                     Operand::Register(Register::Eax),
                     right_operand
@@ -552,10 +646,20 @@ impl IrCodegen {
                 _ => Register::Eax,
             };
             
-            self.emit_instruction_with_comment(Instruction::Mov, vec![
-                dest_operand,
-                Operand::Register(register)
-            ], Some("store return value"));
+            match return_type {
+                IrType::Float => {
+                    self.emit_instruction_with_comment(Instruction::Movsd, vec![
+                        dest_operand,
+                        Operand::Register(register)
+                    ], Some("store return value"));
+                }
+                _ => {
+                    self.emit_instruction_with_comment(Instruction::Mov, vec![
+                        dest_operand,
+                        Operand::Register(register)
+                    ], Some("store return value"));
+                }
+            }
         }
     }
 
@@ -647,9 +751,8 @@ impl IrCodegen {
     fn ir_value_to_operand(&self, value: &IrValue) -> Operand {
         match value {
             IrValue::IntConstant(i) => Operand::Immediate(*i),
-            IrValue::FloatConstant(f) => {
-                // For floats, we'd need to handle this differently in a real implementation
-                Operand::Immediate(f.to_bits() as i64)
+            IrValue::FloatConstant(_f) => {
+                panic!("Float constants cannot be used as immediate operands - must be pre-loaded into memory")
             }
             IrValue::CharConstant(c) => Operand::Immediate(*c as i64),
             IrValue::StringConstant(label) => Operand::Label(label.clone()),
@@ -694,6 +797,22 @@ impl IrCodegen {
             IrValue::Parameter(name) => format!("%{}", name),
             IrValue::Global(name) => format!("@{}", name),
         }
+    }
+
+    fn preload_float_constant(&mut self, float_value: f64) -> Operand {
+        let float_bits = float_value.to_bits() as i64;
+        self.emit_instruction_with_comment(Instruction::Mov, vec![
+            Operand::Register(Register::Rax),
+            Operand::Immediate(float_bits)
+        ], Some("load float bits"));
+        
+        let temp_offset = -8; // Use a temporary stack slot
+        self.emit_instruction_with_comment(Instruction::Mov, vec![
+            Operand::Memory { base: Register::Rsp, offset: temp_offset },
+            Operand::Register(Register::Rax)
+        ], Some("store float to temp memory"));
+        
+        Operand::Memory { base: Register::Rsp, offset: temp_offset }
     }
 }
 

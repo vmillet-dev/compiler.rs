@@ -154,24 +154,30 @@ impl fmt::Display for IrBinaryOp {
     }
 }
 
+impl IrBinaryOp {
+    pub fn try_from_token(token_type: TokenType) -> Result<Self, String> {
+        match token_type {
+            TokenType::Plus => Ok(IrBinaryOp::Add),
+            TokenType::Minus => Ok(IrBinaryOp::Sub),
+            TokenType::Multiply => Ok(IrBinaryOp::Mul),
+            TokenType::Divide => Ok(IrBinaryOp::Div),
+            TokenType::Modulo => Ok(IrBinaryOp::Mod),
+            TokenType::Equal => Ok(IrBinaryOp::Eq),
+            TokenType::NotEqual => Ok(IrBinaryOp::Ne),
+            TokenType::LessThan => Ok(IrBinaryOp::Lt),
+            TokenType::LessEqual => Ok(IrBinaryOp::Le),
+            TokenType::GreaterThan => Ok(IrBinaryOp::Gt),
+            TokenType::GreaterEqual => Ok(IrBinaryOp::Ge),
+            TokenType::LogicalAnd => Ok(IrBinaryOp::And),
+            TokenType::LogicalOr => Ok(IrBinaryOp::Or),
+            _ => Err(format!("Invalid binary operator: {:?}", token_type)),
+        }
+    }
+}
+
 impl From<TokenType> for IrBinaryOp {
     fn from(token_type: TokenType) -> Self {
-        match token_type {
-            TokenType::Plus => IrBinaryOp::Add,
-            TokenType::Minus => IrBinaryOp::Sub,
-            TokenType::Multiply => IrBinaryOp::Mul,
-            TokenType::Divide => IrBinaryOp::Div,
-            TokenType::Modulo => IrBinaryOp::Mod,
-            TokenType::Equal => IrBinaryOp::Eq,
-            TokenType::NotEqual => IrBinaryOp::Ne,
-            TokenType::LessThan => IrBinaryOp::Lt,
-            TokenType::LessEqual => IrBinaryOp::Le,
-            TokenType::GreaterThan => IrBinaryOp::Gt,
-            TokenType::GreaterEqual => IrBinaryOp::Ge,
-            TokenType::LogicalAnd => IrBinaryOp::And,
-            TokenType::LogicalOr => IrBinaryOp::Or,
-            _ => panic!("Invalid binary operator: {:?}", token_type),
-        }
+        Self::try_from_token(token_type).unwrap_or(IrBinaryOp::Add)
     }
 }
 
@@ -283,6 +289,14 @@ pub enum IrInstruction {
         src_type: IrType,
     },
     
+    /// Type cast operation: cast dest_type dest, src
+    Cast {
+        dest: IrValue,
+        src: IrValue,
+        dest_type: IrType,
+        src_type: IrType,
+    },
+    
     /// Comment for debugging
     Comment {
         text: String,
@@ -346,6 +360,9 @@ impl fmt::Display for IrInstruction {
             }
             IrInstruction::Convert { dest, dest_type, src, src_type } => {
                 write!(f, "  {} = convert {} {} to {}", dest, src_type, src, dest_type)
+            }
+            IrInstruction::Cast { dest, src, dest_type, src_type } => {
+                write!(f, "  {} = cast {} {} to {}", dest, src_type, src, dest_type)
             }
             IrInstruction::Comment { text } => {
                 write!(f, "  ; {}", text)

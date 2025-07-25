@@ -20,7 +20,11 @@ impl AstAnalyzer for super::Codegen {
                 }
                 Stmt::VarDecl { var_type, name, .. } => {
                     // Store variable type for later use
-                    self.local_types.insert(name.clone(), var_type.clone());
+                    if let Some(token_type) = var_type.to_token_type() {
+                        self.local_types.insert(name.clone(), token_type);
+                    } else {
+                        self.local_types.insert(name.clone(), crate::lexer::TokenType::Int); // Default fallback
+                    }
                 }
                 Stmt::If { then_branch, .. } => {
                     self.collect_variable_types(then_branch);
