@@ -26,7 +26,6 @@ pub struct IrGenerator {
     string_label_counter: usize,
     local_types: HashMap<String, IrType>,
     type_checker: TypeChecker,
-    type_substitutions: HashMap<String, Type>,
 }
 
 impl IrGenerator {
@@ -39,7 +38,6 @@ impl IrGenerator {
             string_label_counter: 0,
             local_types: HashMap::new(),
             type_checker: TypeChecker::new(),
-            type_substitutions: HashMap::new(),
         }
     }
 
@@ -139,7 +137,7 @@ impl IrGenerator {
             if !matches!(last_instruction, IrInstruction::Return { .. }) {
                 if let Some(token_type) = return_type.to_token_type() {
                     match token_type {
-                        crate::lexer::TokenType::Void => {
+                        TokenType::Void => {
                         self.emit_instruction(IrInstruction::Return {
                             value: None,
                             var_type: IrType::Void,

@@ -58,7 +58,7 @@ jobs:
         gcc --version
     
     - name: Run compiler to generate ASM
-      run: cargo run
+      run: cargo run -- --ir
     
     - name: Compile ASM to object file
       run: '& "C:\Program Files\NASM\nasm.exe" -f win64 output.asm -o output.obj'
