@@ -35,15 +35,48 @@ fn main() {
         float pi = 3.14159;
         char letter = 'A';
 
-        println("Testing simple println with different types:");
-        println(number);
-        println(pi);
-        println(letter);
+        int sum = number + 10;
+        float area = pi * 5.0 * 5.0;
 
-        println("Testing with expressions:");
-        println(number * 2);
+        if (number > 40) {
+            println("Number is greater than 40: %d", number);
+        }
+
+        if (pi > 3.0) {
+            println("Pi approximation: %.3f", pi);
+        }
+
+        int complex_calc = (number * 2) + (sum - 15);
+        float ratio = area / (pi + 1.0);
+
+        letter = 'Z';
+        number = complex_calc;
+
+        println("Final results:");
+        println("Number: %d, Letter: %c", number, letter);
+        println("Area: %.2f, Ratio: %.4f", area, ratio);
+
+        if (complex_calc > 50) {
+            if (letter == 'Z') {
+                println("Complex condition met!");
+            }
+        }
 
         return 0;
+    }
+
+    int helper_function() {
+        int local_var = 100;
+        println("Helper function called with local: %d", local_var);
+        return local_var;
+    }
+
+    float math_function() {
+        float result = 2.718;
+        if (result > 2.0) {
+            result = result * 1.5;
+        }
+        return result;
     }
     "#.to_string()
     };
