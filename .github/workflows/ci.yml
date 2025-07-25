@@ -61,7 +61,7 @@ jobs:
       run: cargo run -- --ir
     
     - name: Compile ASM to object file
-      run: '& "C:\Program Files\NASM\nasm.exe" -f win64 output_ri.asm -o output.obj'
+      run: '& "C:\Program Files\NASM\nasm.exe" -f win64 output_ir.asm -o output.obj'
     
     - name: Link and create executable
       run: gcc -o output.exe output.obj -lmsvcrt
