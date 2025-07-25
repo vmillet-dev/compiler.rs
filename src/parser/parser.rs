@@ -327,7 +327,15 @@ impl Parser {
                 self.consume(TokenType::RightParen)?;
                 Some(expr)
             }
-            _ => None,
+            _ => {
+                self.report_error(
+                    &format!("Unexpected token in expression: {:?}", token.token_type),
+                    Some("Expected a literal, identifier, or parenthesized expression"),
+                    token.line,
+                    token.column
+                );
+                None
+            }
         }
     }
 
@@ -349,7 +357,18 @@ impl Parser {
     }
 
     fn consume_type(&mut self) -> Option<TokenType> {
-        self.match_any(&[TokenType::Int, TokenType::FloatType, TokenType::CharType, TokenType::Void])
+        if let Some(token_type) = self.match_any(&[TokenType::Int, TokenType::FloatType, TokenType::CharType, TokenType::Void]) {
+            Some(token_type)
+        } else {
+            let current_token = self.peek();
+            self.report_error(
+                &format!("Expected type, found {:?}", current_token.token_type),
+                Some("Expected a type like 'int', 'float', 'char', or 'void'"),
+                current_token.line,
+                current_token.column
+            );
+            None
+        }
     }
 
     fn consume_identifier(&mut self) -> Option<String> {
@@ -359,6 +378,12 @@ impl Parser {
             self.advance();
             Some(name)
         } else {
+            self.report_error(
+                &format!("Expected identifier, found {:?}", token.token_type),
+                Some("Expected a variable or function name"),
+                token.line,
+                token.column
+            );
             None
         }
     }
@@ -416,10 +441,16 @@ impl Parser {
                 return;
             }
             
+            if self.previous().token_type == TokenType::RightBrace {
+                return;
+            }
+            
             match self.peek().token_type {
                 TokenType::If | TokenType::Return | TokenType::Int | 
                 TokenType::FloatType | TokenType::CharType | TokenType::Void |
-                TokenType::Println => return,
+                TokenType::Println | TokenType::LeftBrace | TokenType::RightBrace => {
+                    return;
+                }
                 _ => {
                     self.advance();
                 }
