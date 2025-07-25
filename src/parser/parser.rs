@@ -63,6 +63,8 @@ impl Parser {
         Some(Stmt::Function {
             return_type: Type::from(return_type),
             name,
+            type_parameters: Vec::new(), // TODO: Parse generic type parameters
+            parameters: Vec::new(),      // TODO: Parse function parameters
             body,
         })
     }
@@ -303,6 +305,7 @@ impl Parser {
                 expr = Expr::Call {
                     callee: Box::new(expr),
                     arguments,
+                    type_arguments: Vec::new(), // TODO: Parse generic type arguments
                 };
             } else {
                 break;

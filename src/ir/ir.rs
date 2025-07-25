@@ -289,6 +289,14 @@ pub enum IrInstruction {
         src_type: IrType,
     },
     
+    /// Type cast operation: cast dest_type dest, src
+    Cast {
+        dest: IrValue,
+        src: IrValue,
+        dest_type: IrType,
+        src_type: IrType,
+    },
+    
     /// Comment for debugging
     Comment {
         text: String,
@@ -352,6 +360,9 @@ impl fmt::Display for IrInstruction {
             }
             IrInstruction::Convert { dest, dest_type, src, src_type } => {
                 write!(f, "  {} = convert {} {} to {}", dest, src_type, src, dest_type)
+            }
+            IrInstruction::Cast { dest, src, dest_type, src_type } => {
+                write!(f, "  {} = cast {} {} to {}", dest, src_type, src, dest_type)
             }
             IrInstruction::Comment { text } => {
                 write!(f, "  ; {}", text)

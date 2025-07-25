@@ -238,7 +238,7 @@ impl ExpressionGenerator for super::Codegen {
                     }
                 }
             }
-            Expr::Call { callee, arguments: _ } => {
+            Expr::Call { callee, arguments: _, .. } => {
                 // This is a generic function call.
                 // For now, we'll treat it as unsupported as printf is handled by Stmt::PrintStmt.
                 // A full compiler would need to resolve `callee` and pass `arguments`.
@@ -262,6 +262,11 @@ impl ExpressionGenerator for super::Codegen {
                     self.emit_line(&format!("    ; assignment to unknown variable '{}'", name));
                 }
                 // Assignment expression returns the assigned value (in RAX)
+            }
+            Expr::TypeCast { expr, .. } => {
+                // Generate code for the inner expression
+                self.gen_expr(expr);
+                self.emit_line("    ; type cast operation (simplified)");
             }
         }
     }

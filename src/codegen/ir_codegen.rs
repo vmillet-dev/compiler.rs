@@ -388,6 +388,33 @@ impl IrCodegen {
                 self.emit_instruction(Instruction::Mov, vec![dest_operand, src_operand]);
             }
 
+            IrInstruction::Cast { dest, src, dest_type, src_type } => {
+                self.emit_comment(&format!("Cast {} {} to {}", src_type, self.ir_value_to_string(src), dest_type));
+                
+                // For now, implement basic casting by moving the value
+                match (src_type, dest_type) {
+                    (IrType::Int, IrType::Float) => {
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                    (IrType::Float, IrType::Int) => {
+                        // For float to int conversion, use mov for now
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                    _ => {
+                        // For other cases, just move the value
+                        self.emit_instruction(Instruction::Mov, vec![
+                            self.ir_value_to_operand(src),
+                            self.ir_value_to_operand(dest),
+                        ]);
+                    }
+                }
+            }
             IrInstruction::Comment { text } => {
                 self.emit_comment(text);
             }

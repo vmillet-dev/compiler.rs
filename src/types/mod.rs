@@ -96,13 +96,69 @@ impl Type {
             size_hint: None,
         }
     }
+    
+    pub fn generic(name: String) -> Self {
+        Type {
+            kind: TypeKind::Generic(name),
+            qualifiers: TypeQualifiers::default(),
+            size_hint: None,
+        }
+    }
+    
+    pub fn function(return_type: Type, parameters: Vec<Type>, is_variadic: bool) -> Self {
+        Type {
+            kind: TypeKind::Function(FunctionType {
+                return_type: Box::new(return_type),
+                parameters,
+                is_variadic,
+            }),
+            qualifiers: TypeQualifiers::default(),
+            size_hint: None,
+        }
+    }
 
     pub fn is_compatible_with(&self, other: &Type) -> bool {
+        self.is_compatible_with_substitutions(other, &std::collections::HashMap::new())
+    }
+    
+    pub fn is_compatible_with_substitutions(&self, other: &Type, substitutions: &std::collections::HashMap<String, Type>) -> bool {
         match (&self.kind, &other.kind) {
             (TypeKind::Primitive(a), TypeKind::Primitive(b)) => a == b,
-            (TypeKind::Pointer(a), TypeKind::Pointer(b)) => a.is_compatible_with(b),
+            (TypeKind::Pointer(a), TypeKind::Pointer(b)) => a.is_compatible_with_substitutions(b, substitutions),
             (TypeKind::Array(a, size_a), TypeKind::Array(b, size_b)) => {
-                size_a == size_b && a.is_compatible_with(b)
+                size_a == size_b && a.is_compatible_with_substitutions(b, substitutions)
+            }
+            (TypeKind::Function(a), TypeKind::Function(b)) => {
+                a.return_type.is_compatible_with_substitutions(&b.return_type, substitutions) &&
+                a.parameters.len() == b.parameters.len() &&
+                a.parameters.iter().zip(&b.parameters).all(|(p1, p2)| p1.is_compatible_with_substitutions(p2, substitutions)) &&
+                a.is_variadic == b.is_variadic
+            }
+            (TypeKind::Generic(name), _) => {
+                if let Some(substituted) = substitutions.get(name) {
+                    substituted.is_compatible_with_substitutions(other, substitutions)
+                } else {
+                    true // Generic types are compatible with anything if not constrained
+                }
+            }
+            (_, TypeKind::Generic(name)) => {
+                if let Some(substituted) = substitutions.get(name) {
+                    self.is_compatible_with_substitutions(substituted, substitutions)
+                } else {
+                    true // Generic types are compatible with anything if not constrained
+                }
+            }
+            _ => false,
+        }
+    }
+    
+    pub fn is_generic(&self) -> bool {
+        match &self.kind {
+            TypeKind::Generic(_) => true,
+            TypeKind::Pointer(inner) => inner.is_generic(),
+            TypeKind::Array(inner, _) => inner.is_generic(),
+            TypeKind::Function(func) => {
+                func.return_type.is_generic() || func.parameters.iter().any(|p| p.is_generic())
             }
             _ => false,
         }

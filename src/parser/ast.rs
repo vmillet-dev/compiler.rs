@@ -21,10 +21,15 @@ pub enum Expr {
     Call {
         callee: Box<Expr>,
         arguments: Vec<Expr>,
+        type_arguments: Vec<Type>, // For generic function calls like func<T>(args)
     },
     Assignment {
         name: String,
         value: Box<Expr>,
+    },
+    TypeCast {
+        expr: Box<Expr>,
+        target_type: Type,
     },
 }
 
@@ -45,10 +50,19 @@ pub enum Stmt {
     Function {
         return_type: Type,
         name: String,
+        type_parameters: Vec<String>, // Generic type parameters like <T, U>
+        parameters: Vec<Parameter>,   // Function parameters
         body: Vec<Stmt>,
     },
     PrintStmt {
         format_string: Expr,
         args: Vec<Expr>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub param_type: Type,
+    pub is_mutable: bool,
 }

@@ -159,7 +159,7 @@ impl LifetimeAnalyzer {
                     self.analyze_statement(stmt)?;
                 }
             }
-            Stmt::Function { return_type: _, name: _, body } => {
+            Stmt::Function { return_type: _, name: _, body, .. } => {
                 for body_stmt in body {
                     self.analyze_statement(body_stmt)?;
                 }
@@ -187,7 +187,7 @@ impl LifetimeAnalyzer {
             Expr::Unary { operand, .. } => {
                 self.analyze_expression(operand)?;
             }
-            Expr::Call { callee, arguments } => {
+            Expr::Call { callee, arguments, .. } => {
                 self.analyze_expression(callee)?;
                 for arg in arguments {
                     self.analyze_expression(arg)?;
@@ -198,6 +198,9 @@ impl LifetimeAnalyzer {
                 self.analyze_expression(value)?;
             }
             Expr::Integer(_) | Expr::Float(_) | Expr::String(_) | Expr::Char(_) => {
+            }
+            Expr::TypeCast { expr, .. } => {
+                self.analyze_expression(expr)?;
             }
         }
         Ok(())
