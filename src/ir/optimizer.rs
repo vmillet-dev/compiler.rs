@@ -25,7 +25,7 @@ impl OptimizationManager {
     }
     
     pub fn run_passes(&mut self, function: &mut IrFunction) {
-        for iteration in 0..self.max_iterations {
+        for _iteration in 0..self.max_iterations {
             let mut changed = false;
             
             let sorted_passes = self.sort_passes_by_dependencies();

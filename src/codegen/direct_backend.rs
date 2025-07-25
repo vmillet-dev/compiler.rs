@@ -1,5 +1,5 @@
 use super::backend::{CodegenBackend, BackendUtils, RegisterAllocator};
-use super::instruction::{Instruction, Operand, Register, Size};
+use super::instruction::{Instruction, Operand, Size};
 use crate::lexer::TokenType;
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ pub struct DirectBackend {
     stack_offset: i32,
     locals: HashMap<String, i32>,
     local_types: HashMap<String, TokenType>,
-    register_allocator: RegisterAllocator,
+    _register_allocator: RegisterAllocator,
 }
 
 impl DirectBackend {
@@ -18,7 +18,7 @@ impl DirectBackend {
             stack_offset: 0,
             locals: HashMap::new(),
             local_types: HashMap::new(),
-            register_allocator: RegisterAllocator::new(),
+            _register_allocator: RegisterAllocator::new(),
         }
     }
     

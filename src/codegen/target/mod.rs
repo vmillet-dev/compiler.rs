@@ -1,6 +1,6 @@
 pub mod x86_64_windows;
 
-use crate::codegen::instruction::{Instruction, Register, Operand};
+use crate::codegen::instruction::Register;
 use crate::types::Type;
 use std::collections::HashMap;
 

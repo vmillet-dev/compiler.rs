@@ -9,7 +9,7 @@ pub struct IrBackend {
     stack_offset: i32,
     locals: HashMap<String, i32>,
     local_types: HashMap<String, TokenType>,
-    register_allocator: RegisterAllocator,
+    _register_allocator: RegisterAllocator,
     ir_program: Option<IrProgram>,
 }
 
@@ -20,7 +20,7 @@ impl IrBackend {
             stack_offset: 0,
             locals: HashMap::new(),
             local_types: HashMap::new(),
-            register_allocator: RegisterAllocator::new(),
+            _register_allocator: RegisterAllocator::new(),
             ir_program: None,
         }
     }

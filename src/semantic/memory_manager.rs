@@ -1,6 +1,6 @@
 use crate::types::Type;
-use crate::semantic::symbol_table::{SymbolTable, Symbol, Visibility, Mutability};
-use crate::semantic::lifetime_simple::{LifetimeAnalyzer, Lifetime, VariableUsage};
+use crate::semantic::symbol_table::SymbolTable;
+use crate::semantic::lifetime_simple::{LifetimeAnalyzer, Lifetime};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +54,7 @@ impl MemoryLayout {
 pub struct StackFrameManager {
     current_offset: i32,
     max_offset: i32,
-    alignment: usize,
+    _alignment: usize,
     variable_layouts: HashMap<String, MemoryLayout>,
     scope_stack: Vec<i32>, // Track offset at each scope entry
 }
@@ -64,7 +64,7 @@ impl StackFrameManager {
         Self {
             current_offset: 0,
             max_offset: 0,
-            alignment,
+            _alignment: alignment,
             variable_layouts: HashMap::new(),
             scope_stack: vec![0],
         }
@@ -180,7 +180,7 @@ impl StackFrameManager {
 pub struct MemorySafetyChecker {
     lifetime_analyzer: LifetimeAnalyzer,
     stack_manager: StackFrameManager,
-    symbol_table: SymbolTable<MemoryLayout>,
+    _symbol_table: SymbolTable<MemoryLayout>,
 }
 
 impl MemorySafetyChecker {
@@ -188,7 +188,7 @@ impl MemorySafetyChecker {
         Self {
             lifetime_analyzer: LifetimeAnalyzer::new(),
             stack_manager: StackFrameManager::new(8), // 8-byte alignment
-            symbol_table: SymbolTable::new(),
+            _symbol_table: SymbolTable::new(),
         }
     }
     
