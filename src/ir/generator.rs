@@ -129,11 +129,6 @@ impl IrGenerator {
 
         self.current_function = Some(function.clone());
 
-        // Add entry label
-        self.emit_instruction(IrInstruction::Label {
-            name: "entry".to_string(),
-        });
-
         // Generate instructions for function body
         for stmt in body {
             self.generate_stmt(stmt)?;
