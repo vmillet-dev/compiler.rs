@@ -1,5 +1,6 @@
 use super::{TargetArchitecture, RegisterAllocator, CallingConvention, MemoryLocation};
 use crate::codegen::instruction::{Register, Operand, Size};
+use crate::types::target_config::TargetTypeConfig;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -29,6 +30,7 @@ pub struct X86_64Windows {
     output: String,
     register_allocator: X86RegisterAllocator,
     calling_convention: WindowsX64CallingConvention,
+    type_config: TargetTypeConfig,
 }
 
 impl X86_64Windows {
@@ -37,6 +39,7 @@ impl X86_64Windows {
             output: String::new(),
             register_allocator: X86RegisterAllocator::new(),
             calling_convention: WindowsX64CallingConvention::new(),
+            type_config: TargetTypeConfig::x86_64(),
         }
     }
     
@@ -146,6 +149,10 @@ impl TargetArchitecture for X86_64Windows {
     
     fn calling_convention(&self) -> &Self::CallingConvention {
         &self.calling_convention
+    }
+    
+    fn type_config(&self) -> &TargetTypeConfig {
+        &self.type_config
     }
     
     fn emit_prologue(&mut self, function_name: &str, local_size: usize) {
@@ -280,9 +287,33 @@ pub struct WindowsX64CallingConvention {
 impl WindowsX64CallingConvention {
     pub fn new() -> Self {
         Self {
-            parameter_registers: vec![Register::Rcx, Register::Rdx, Register::R8, Register::R9],
-            caller_saved: vec![Register::Rax, Register::Rcx, Register::Rdx, Register::R8, Register::R9],
-            callee_saved: vec![Register::Rbp, Register::Rsp],
+            parameter_registers: Self::default_parameter_registers(),
+            caller_saved: Self::default_caller_saved(),
+            callee_saved: Self::default_callee_saved(),
+        }
+    }
+    
+    fn default_parameter_registers() -> Vec<Register> {
+        vec![Register::Rcx, Register::Rdx, Register::R8, Register::R9]
+    }
+    
+    fn default_caller_saved() -> Vec<Register> {
+        vec![Register::Rax, Register::Rcx, Register::Rdx, Register::R8, Register::R9]
+    }
+    
+    fn default_callee_saved() -> Vec<Register> {
+        vec![Register::Rbp, Register::Rsp]
+    }
+    
+    pub fn with_custom_registers(
+        param_regs: Vec<Register>,
+        caller_saved: Vec<Register>, 
+        callee_saved: Vec<Register>
+    ) -> Self {
+        Self {
+            parameter_registers: param_regs,
+            caller_saved,
+            callee_saved,
         }
     }
 }

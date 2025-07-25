@@ -1,5 +1,8 @@
 use crate::lexer::TokenType;
 
+pub mod target_config;
+use target_config::TargetTypeConfig;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
     pub kind: TypeKind,
@@ -82,7 +85,7 @@ impl Type {
         Type {
             kind: TypeKind::Pointer(Box::new(target)),
             qualifiers: TypeQualifiers::default(),
-            size_hint: Some(8), // 64-bit pointer
+            size_hint: None, // Let target config determine pointer size
         }
     }
 
@@ -116,28 +119,22 @@ impl Type {
     }
 
     pub fn size(&self) -> usize {
+        self.size_with_config(&TargetTypeConfig::default())
+    }
+    
+    pub fn size_with_config(&self, config: &TargetTypeConfig) -> usize {
         if let Some(hint) = self.size_hint {
             return hint;
         }
-
-        match &self.kind {
-            TypeKind::Primitive(prim) => match prim {
-                PrimitiveType::Void => 0,
-                PrimitiveType::Bool => 1,
-                PrimitiveType::Int8 | PrimitiveType::UInt8 | PrimitiveType::Char => 1,
-                PrimitiveType::Int16 | PrimitiveType::UInt16 => 2,
-                PrimitiveType::Int32 | PrimitiveType::UInt32 | PrimitiveType::Float32 => 4,
-                PrimitiveType::Int64 | PrimitiveType::UInt64 | PrimitiveType::Float64 => 8,
-                PrimitiveType::String => 8, // Pointer to string data
-            },
-            TypeKind::Pointer(_) => 8, // 64-bit pointer
-            TypeKind::Array(element, count) => element.size() * count,
-            TypeKind::Function(_) => 8, // Function pointer
-            TypeKind::Struct(s) => s.fields.iter().map(|(_, t)| t.size()).sum(),
-            TypeKind::Union(u) => u.variants.iter().map(|(_, t)| t.size()).max().unwrap_or(0),
-            TypeKind::Enum(_) => 4, // 32-bit enum
-            TypeKind::Generic(_) => 8, // Default size for generic types
-        }
+        config.size_of(&self.kind)
+    }
+    
+    pub fn alignment(&self) -> usize {
+        self.alignment_with_config(&TargetTypeConfig::default())
+    }
+    
+    pub fn alignment_with_config(&self, config: &TargetTypeConfig) -> usize {
+        config.alignment_of(&self.kind)
     }
 }
 

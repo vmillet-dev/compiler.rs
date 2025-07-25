@@ -1,13 +1,13 @@
 pub mod x86_64_windows;
 
 use crate::codegen::instruction::Register;
-use crate::types::Type;
+use crate::types::{Type, target_config::TargetTypeConfig};
 use std::collections::HashMap;
 
 pub trait TargetArchitecture {
     type Register: Clone + PartialEq;
     type Instruction: Clone;
-    type CallingConvention;
+    type CallingConvention: CallingConvention<Register = Self::Register>;
     
     fn emit_instruction(&mut self, instr: Self::Instruction);
     
@@ -16,6 +16,8 @@ pub trait TargetArchitecture {
     fn free_register(&mut self, reg: Self::Register);
     
     fn calling_convention(&self) -> &Self::CallingConvention;
+    
+    fn type_config(&self) -> &TargetTypeConfig;
     
     fn emit_prologue(&mut self, function_name: &str, local_size: usize);
     
@@ -30,6 +32,11 @@ pub trait TargetArchitecture {
     fn stack_pointer(&self) -> Self::Register;
     
     fn base_pointer(&self) -> Self::Register;
+    
+    fn align_stack(&mut self, size: usize) -> usize {
+        let alignment = self.calling_convention().stack_alignment();
+        (size + alignment - 1) & !(alignment - 1)
+    }
 }
 
 pub trait RegisterAllocator<R> {
@@ -90,7 +97,14 @@ impl<T: TargetArchitecture> CodeGenerator<T> {
     }
     
     pub fn allocate_local(&mut self, name: String, var_type: Type) -> i32 {
-        self.stack_offset -= 8; // Assume 8-byte alignment for now
+        let type_config = self.target.type_config();
+        let var_size = var_type.size_with_config(type_config);
+        let var_alignment = var_type.alignment_with_config(type_config);
+        
+        let alignment = var_alignment as i32;
+        self.stack_offset = -((-self.stack_offset + alignment - 1) & !(alignment - 1));
+        self.stack_offset -= var_size as i32;
+        
         self.local_variables.insert(name, (var_type, self.stack_offset));
         self.stack_offset
     }
