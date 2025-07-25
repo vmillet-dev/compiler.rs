@@ -170,6 +170,28 @@ impl LifetimeAnalyzer {
                     self.analyze_expression(arg)?;
                 }
             }
+            Stmt::While { condition, body } => {
+                self.analyze_expression(condition)?;
+                for stmt in body {
+                    self.analyze_statement(stmt)?;
+                }
+            }
+            Stmt::For { init, condition, update, body } => {
+                if let Some(init_stmt) = init {
+                    self.analyze_statement(init_stmt)?;
+                }
+                if let Some(cond_expr) = condition {
+                    self.analyze_expression(cond_expr)?;
+                }
+                if let Some(update_expr) = update {
+                    self.analyze_expression(update_expr)?;
+                }
+                for stmt in body {
+                    self.analyze_statement(stmt)?;
+                }
+            }
+            Stmt::Break | Stmt::Continue => {
+            }
         }
         self.current_line += 1;
         Ok(())
