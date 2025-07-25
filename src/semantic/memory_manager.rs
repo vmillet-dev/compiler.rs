@@ -70,7 +70,7 @@ impl StackFrameManager {
         }
     }
     
-    pub fn new_with_default_alignment(alignment: usize) -> Self {
+    pub fn new_with_default_alignment(_alignment: usize) -> Self {
         Self::new(TargetTypeConfig::x86_64())
     }
     

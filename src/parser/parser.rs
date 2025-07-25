@@ -516,7 +516,7 @@ mod tests {
         
         assert_eq!(result.len(), 1);
         match &result[0] {
-            Stmt::Function { return_type, name, body } => {
+            Stmt::Function { return_type, name, body, .. } => {
                 assert_eq!(*return_type, Type::from(TokenType::Int));
                 assert_eq!(*name, "main");
                 assert!(body.is_empty());
@@ -546,7 +546,7 @@ mod tests {
         
         assert_eq!(result.len(), 1);
         match &result[0] {
-            Stmt::Function { return_type, name, body } => {
+            Stmt::Function { return_type, name, body, .. } => {
                 assert_eq!(*return_type, Type::from(TokenType::Int));
                 assert_eq!(*name, "test");
                 assert_eq!(body.len(), 1);
@@ -751,7 +751,7 @@ mod tests {
         let mut parser = Parser::new(tokens);
         if let Some(expr) = parser.expression() {
             match expr {
-                Expr::Call { callee, arguments } => {
+                Expr::Call { callee, arguments, .. } => {
                     assert_eq!(*callee, Expr::Identifier("func".to_string()));
                     assert_eq!(arguments.len(), 2);
                     assert_eq!(arguments[0], Expr::Integer(42));
