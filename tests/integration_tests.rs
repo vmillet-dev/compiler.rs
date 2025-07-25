@@ -14,7 +14,7 @@ mod ir_integration_tests {
         let direct_asm = direct_codegen.generate(&ast);
 
         let mut ir_generator = IrGenerator::new();
-        let ir_program = ir_generator.generate(&ast);
+        let ir_program = ir_generator.generate(&ast).expect("IR generation should succeed");
         let ir_output = format!("{}", ir_program);
         
         let ir_codegen = IrCodegen::new();
