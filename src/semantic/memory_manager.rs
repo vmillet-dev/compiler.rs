@@ -1,4 +1,4 @@
-use crate::types::Type;
+use crate::types::{Type, TargetTypeConfig};
 use crate::semantic::symbol_table::SymbolTable;
 use crate::semantic::lifetime_simple::{LifetimeAnalyzer, Lifetime};
 use std::collections::HashMap;
@@ -54,25 +54,29 @@ impl MemoryLayout {
 pub struct StackFrameManager {
     current_offset: i32,
     max_offset: i32,
-    _alignment: usize,
+    target_config: TargetTypeConfig,
     variable_layouts: HashMap<String, MemoryLayout>,
     scope_stack: Vec<i32>, // Track offset at each scope entry
 }
 
 impl StackFrameManager {
-    pub fn new(alignment: usize) -> Self {
+    pub fn new(target_config: TargetTypeConfig) -> Self {
         Self {
             current_offset: 0,
             max_offset: 0,
-            _alignment: alignment,
+            target_config,
             variable_layouts: HashMap::new(),
             scope_stack: vec![0],
         }
     }
     
+    pub fn new_with_default_alignment(alignment: usize) -> Self {
+        Self::new(TargetTypeConfig::x86_64())
+    }
+    
     pub fn allocate_variable(&mut self, name: String, var_type: &Type) -> MemoryLayout {
-        let size = var_type.size();
-        let alignment = self.calculate_alignment(var_type);
+        let size = var_type.size_with_config(&self.target_config);
+        let alignment = var_type.alignment_with_config(&self.target_config);
         
         self.current_offset = self.align_offset(self.current_offset, alignment);
         self.current_offset -= size as i32; // Stack grows downward
@@ -128,26 +132,8 @@ impl StackFrameManager {
         self.max_offset.abs() as usize
     }
     
-    fn calculate_alignment(&self, var_type: &Type) -> usize {
-        use crate::types::{TypeKind, PrimitiveType};
-        
-        match &var_type.kind {
-            TypeKind::Primitive(prim) => match prim {
-                PrimitiveType::Bool | PrimitiveType::Int8 | PrimitiveType::UInt8 | PrimitiveType::Char => 1,
-                PrimitiveType::Int16 | PrimitiveType::UInt16 => 2,
-                PrimitiveType::Int32 | PrimitiveType::UInt32 | PrimitiveType::Float32 => 4,
-                PrimitiveType::Int64 | PrimitiveType::UInt64 | PrimitiveType::Float64 => 8,
-                PrimitiveType::String => 8, // Pointer alignment
-                PrimitiveType::Void => 1,
-            },
-            TypeKind::Pointer(_) => 8, // 64-bit pointer
-            TypeKind::Array(element, _) => self.calculate_alignment(element),
-            TypeKind::Function(_) => 8, // Function pointer
-            TypeKind::Struct(_) => 8, // Struct alignment (simplified)
-            TypeKind::Union(_) => 8, // Union alignment (simplified)
-            TypeKind::Enum(_) => 4, // Enum alignment
-            TypeKind::Generic(_) => 8, // Default alignment for generics
-        }
+    pub fn target_config(&self) -> &TargetTypeConfig {
+        &self.target_config
     }
     
     fn align_offset(&self, offset: i32, alignment: usize) -> i32 {
@@ -186,9 +172,13 @@ pub struct MemorySafetyChecker {
 
 impl MemorySafetyChecker {
     pub fn new() -> Self {
+        Self::new_with_target_config(TargetTypeConfig::x86_64())
+    }
+    
+    pub fn new_with_target_config(target_config: TargetTypeConfig) -> Self {
         Self {
             lifetime_analyzer: LifetimeAnalyzer::new(),
-            stack_manager: StackFrameManager::new(8), // 8-byte alignment
+            stack_manager: StackFrameManager::new(target_config),
             _symbol_table: SymbolTable::new(),
         }
     }
@@ -353,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_stack_frame_allocation() {
-        let mut manager = StackFrameManager::new(8);
+        let mut manager = StackFrameManager::new(TargetTypeConfig::x86_64());
         
         let int_type = Type::primitive(PrimitiveType::Int32);
         let layout1 = manager.allocate_variable("x".to_string(), &int_type);
@@ -368,7 +358,7 @@ mod tests {
     
     #[test]
     fn test_scope_management() {
-        let mut manager = StackFrameManager::new(8);
+        let mut manager = StackFrameManager::new(TargetTypeConfig::x86_64());
         
         let int_type = Type::primitive(PrimitiveType::Int32);
         manager.allocate_variable("global".to_string(), &int_type);
@@ -389,7 +379,7 @@ mod tests {
     
     #[test]
     fn test_memory_alignment() {
-        let mut manager = StackFrameManager::new(8);
+        let mut manager = StackFrameManager::new(TargetTypeConfig::x86_64());
         
         let char_type = Type::primitive(PrimitiveType::Char);
         let int_type = Type::primitive(PrimitiveType::Int32);

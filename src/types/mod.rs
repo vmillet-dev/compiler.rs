@@ -1,7 +1,8 @@
 use crate::lexer::TokenType;
 
 pub mod target_config;
-use target_config::TargetTypeConfig;
+
+pub use target_config::TargetTypeConfig;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
