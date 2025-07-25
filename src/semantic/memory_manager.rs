@@ -102,7 +102,8 @@ impl StackFrameManager {
             return Err("Cannot exit global scope".to_string());
         }
         
-        let scope_start_offset = self.scope_stack.pop().unwrap();
+        let scope_start_offset = self.scope_stack.pop()
+            .ok_or_else(|| "Scope stack is empty".to_string())?;
         let mut deallocated_vars = Vec::new();
         
         self.variable_layouts.retain(|name, layout| {

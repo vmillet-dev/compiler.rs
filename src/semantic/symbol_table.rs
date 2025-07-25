@@ -263,7 +263,7 @@ mod tests {
             1,
             1,
         );
-        table.insert(global_symbol).unwrap();
+        table.insert(global_symbol).expect("Failed to insert global symbol");
         
         table.enter_scope();
         
@@ -277,12 +277,12 @@ mod tests {
             2,
             1,
         );
-        table.insert(local_symbol).unwrap();
+        table.insert(local_symbol).expect("Failed to insert local symbol");
         
         assert!(table.lookup("global").is_some());
         assert!(table.lookup("local").is_some());
         
-        table.exit_scope().unwrap();
+        table.exit_scope().expect("Failed to exit scope");
         
         assert!(table.lookup("global").is_some());
         assert!(table.lookup("local").is_none());
@@ -302,7 +302,7 @@ mod tests {
             1,
             1,
         );
-        table.insert(global_x).unwrap();
+        table.insert(global_x).expect("Failed to insert global x");
         
         table.enter_scope();
         let local_x = Symbol::new(
@@ -315,9 +315,9 @@ mod tests {
             2,
             1,
         );
-        table.insert(local_x).unwrap();
+        table.insert(local_x).expect("Failed to insert local x");
         
-        let found = table.lookup("x").unwrap();
+        let found = table.lookup("x").expect("Failed to lookup x");
         assert_eq!(found.value, 2);
         
         let shadowed = table.check_shadowing("x");

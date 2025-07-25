@@ -87,7 +87,13 @@ fn main() {
                 
                 // Generate IR from AST
                 let mut ir_generator = IrGenerator::new();
-                let ir_program = ir_generator.generate(&ast);
+                let ir_program = match ir_generator.generate(&ast) {
+                    Ok(program) => program,
+                    Err(e) => {
+                        eprintln!("IR generation failed: {:?}", e);
+                        return;
+                    }
+                };
                 
                 // Save IR to file for inspection
                 match fs::write("output.ir", format!("{}", ir_program)) {
