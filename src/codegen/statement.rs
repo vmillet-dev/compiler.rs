@@ -4,6 +4,7 @@ use crate::parser::ast::{Expr, Stmt};
 use super::instruction::{Instruction, Operand, Register, Size};
 use super::emitter::{Emitter, CodeEmitter, CodeEmitterWithComment};
 use super::expression::ExpressionGenerator;
+use super::calling_convention::FunctionCallGenerator;
 
 pub trait StatementGenerator: Emitter + CodeEmitter + CodeEmitterWithComment + ExpressionGenerator {
     fn gen_stmt(&mut self, stmt: &Stmt);
@@ -397,12 +398,11 @@ impl StatementGenerator for super::Codegen {
                     
                     let format_label = self.data_strings.get(s).unwrap().clone();
                     
-                    self.emit_comment("Aligner la pile avant l'appel (RSP doit être multiple de 16)");
-                    self.emit_line("    and     rsp, ~15            ; Force l'alignement sur 16 octets");
-                    self.emit_instruction(Instruction::Sub, vec![
-                        Operand::Register(Register::Rsp), 
-                        Operand::Immediate(32)
-                    ]);
+                    let call_gen = FunctionCallGenerator::windows_x64();
+                    
+                    for instruction in call_gen.generate_stack_alignment() {
+                        self.emit_line(&instruction);
+                    }
                     self.emit_line("");
 
                     if args.is_empty() {
@@ -418,35 +418,32 @@ impl StatementGenerator for super::Codegen {
                             Operand::Label(format_label)
                         ]);
                         
-                        // Handle printf arguments generically
-                        let arg_registers = ["edx", "r8d", "r9d"]; // Windows x64 calling convention
-                        let xmm_registers = ["xmm1", "xmm2", "xmm3"];
+                        // Generate argument passing code using calling convention
+                        let mut arg_sources = Vec::new();
+                        let mut arg_types = Vec::new();
                         
                         for (i, arg) in args.iter().enumerate() {
-                            if i >= 3 { break; } // Only handle first 3 args for now
+                            if i >= call_gen.calling_convention().max_register_args() { 
+                                break; // Only handle register args for now
+                            }
                             
                             if let Expr::Identifier(var_name) = arg {
                                 if let Some(&offset) = self.locals.get(var_name) {
-                                    if i == 0 { // First arg - likely integer
-                                        self.emit_line(&format!("    mov     {}, [rbp{}]            ; Arg {}: la valeur de {} (dans {})", 
-                                            arg_registers[i], offset, i + 2, var_name, arg_registers[i].to_uppercase()));
-                                    } else if i == 1 { // Second arg - likely float
-                                        self.emit_line("");
-                                        self.emit_comment(&format!("Pour le {}ème argument (flottant), il faut le mettre dans {} ET dans {}", 
-                                            i + 2, xmm_registers[i].to_uppercase(), arg_registers[i].to_uppercase()));
-                                        self.emit_line(&format!("    movsd   {}, [rbp{}]          ; Charge le flottant dans {}", 
-                                            xmm_registers[i], offset, xmm_registers[i].to_uppercase()));
-                                        let reg_64 = if arg_registers[i] == "r8d" { "r8" } else { "rdx" };
-                                        self.emit_line(&format!("    movq    {}, {}                ; ET copie la même valeur dans {}", 
-                                            reg_64, xmm_registers[i], arg_registers[i].to_uppercase()));
-                                    } else if i == 2 { // Third arg - likely char
-                                        self.emit_line("");
-                                        self.emit_comment(&format!("Le {}ème argument va dans {}", i + 2, arg_registers[i].to_uppercase()));
-                                        self.emit_line(&format!("    movzx   {}, byte [rbp{}]      ; Arg {}: la valeur de {} (dans {})", 
-                                            arg_registers[i], offset, i + 2, var_name, arg_registers[i].to_uppercase()));
-                                    }
+                                    arg_sources.push(format!("[rbp{}]", offset));
+                                    
+                                    let arg_type = match i {
+                                        0 => "int",
+                                        1 => "float", 
+                                        2 => "char",
+                                        _ => "int",
+                                    };
+                                    arg_types.push(arg_type.to_string());
                                 }
                             }
+                        }
+                        
+                        for instruction in call_gen.generate_argument_passing(&arg_sources, &arg_types) {
+                            self.emit_line(&format!("    {}", instruction));
                         }
                         
                         self.emit_line("");
@@ -454,10 +451,9 @@ impl StatementGenerator for super::Codegen {
                     }
 
                     self.emit_line("");
-                    self.emit_instruction(Instruction::Add, vec![
-                        Operand::Register(Register::Rsp), 
-                        Operand::Immediate(32)
-                    ]);
+                    for instruction in call_gen.generate_stack_cleanup() {
+                        self.emit_line(&instruction);
+                    }
 
                 } else {
                     self.emit_line(&format!("    ; printf format string is not a string literal: {:?}", format_string));

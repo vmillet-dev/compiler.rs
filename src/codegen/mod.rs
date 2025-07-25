@@ -9,6 +9,7 @@ mod backend;
 mod direct_backend;
 mod ir_backend;
 mod target;
+mod calling_convention;
 
 pub use codegen::Codegen;
 pub use ir_codegen::IrCodegen;
@@ -22,3 +23,4 @@ pub use direct_backend::DirectBackend;
 pub use ir_backend::IrBackend;
 pub use target::{TargetArchitecture, RegisterAllocator as TargetRegisterAllocator, CallingConvention, CodeGenerator};
 pub use target::x86_64_windows::{X86_64Windows, X86RegisterAllocator, WindowsX64CallingConvention};
+pub use calling_convention::{FunctionCallGenerator, CallingConvention as CallConv};
