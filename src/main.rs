@@ -1,5 +1,5 @@
 use std::{env, fs};
-use compiler_minic::codegen::{IrCodegen};
+use compiler_minic::codegen::{IrCodegen, TargetPlatform, parse_target_platform};
 use compiler_minic::lexer::Lexer;
 use compiler_minic::parser::Parser;
 use compiler_minic::ir::{IrGenerator, IrOptimizer};
@@ -8,8 +8,28 @@ use compiler_minic::semantic::{MemorySafetyChecker, MemorySafetySeverity};
 fn main() {
     let args: Vec<String> = env::args().collect();
     
-    // Find the filename (first non-flag argument)
-    let filename = args.iter().skip(1).find(|arg| !arg.starts_with("--"));
+    // Parse target platform from command line arguments
+    let target_platform = args.iter()
+        .position(|arg| arg == "--target")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|target_str| parse_target_platform(target_str).ok())
+        .unwrap_or(TargetPlatform::WindowsX64);
+    
+    println!("Target platform: {:?}", target_platform);
+    
+    // Find the filename (first non-flag argument that's not a target value)
+    let mut skip_next = false;
+    let filename = args.iter().skip(1).find(|arg| {
+        if skip_next {
+            skip_next = false;
+            return false;
+        }
+        if *arg == "--target" {
+            skip_next = true;
+            return false;
+        }
+        !arg.starts_with("--")
+    });
     
     let code = if let Some(filename) = filename {
         // File argument provided
@@ -136,8 +156,8 @@ fn main() {
                 Err(e) => eprintln!("Error writing optimized IR file: {}", e),
             }
 
-            // Generate assembly from IR
-            let ir_codegen = IrCodegen::new();
+            // Generate assembly from IR with target platform
+            let ir_codegen = IrCodegen::new_with_target(target_platform);
             let asm_code = ir_codegen.generate(&optimized_ir);
 
             match fs::write("output.asm", asm_code) {

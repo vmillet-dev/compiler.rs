@@ -16,19 +16,21 @@ impl IrCodegen {
 
         // Function prologue
         self.emit_subsection_header("Function Prologue");
-        self.emit_instruction_with_comment(Instruction::Push, vec![
-            Operand::Register(Register::Rbp)
-        ], Some("save caller's frame"));
-        self.emit_instruction_with_comment(Instruction::Mov, vec![
-            Operand::Register(Register::Rbp), 
-            Operand::Register(Register::Rsp)
-        ], Some("set up frame"));
+        let prologue_instructions = self.target.function_prologue();
+        for (i, instr) in prologue_instructions.iter().enumerate() {
+            let comment = match i {
+                0 => Some("save caller's frame"),
+                1 => Some("set up frame"),
+                _ => None,
+            };
+            self.emit_line_with_comment(&format!("    {}", instr), comment);
+        }
 
         // Calculate stack space needed
         let stack_space = self.calculate_stack_space(function);
         if stack_space > 0 {
             self.emit_instruction_with_comment(Instruction::Sub, vec![
-                Operand::Register(Register::Rsp), 
+                Operand::Register(self.target.stack_pointer()), 
                 Operand::Immediate(stack_space as i64)
             ], Some(&format!("allocate {} bytes for locals and temps", stack_space)));
         }
@@ -45,15 +47,21 @@ impl IrCodegen {
         
         if stack_space > 0 {
             self.emit_instruction_with_comment(Instruction::Add, vec![
-                Operand::Register(Register::Rsp), 
+                Operand::Register(self.target.stack_pointer()), 
                 Operand::Immediate(stack_space as i64)
             ], Some("deallocate stack space"));
         }
         
-        self.emit_instruction_with_comment(Instruction::Pop, vec![
-            Operand::Register(Register::Rbp)
-        ], Some("restore frame"));
-        self.emit_instruction_with_comment(Instruction::Ret, vec![], Some("return"));
+        let epilogue_instructions = self.target.function_epilogue();
+        for (i, instr) in epilogue_instructions.iter().enumerate() {
+            let comment = match i {
+                0 => Some("restore stack pointer"),
+                1 => Some("restore frame"),
+                2 => Some("return"),
+                _ => None,
+            };
+            self.emit_line_with_comment(&format!("    {}", instr), comment);
+        }
         
         self.emit_line(""); // Add spacing after function
     }

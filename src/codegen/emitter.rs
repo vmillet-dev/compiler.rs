@@ -3,6 +3,13 @@ use super::instruction::{Instruction, Operand, Size};
 pub trait Emitter {
     fn emit_line(&mut self, line: &str);
     fn emit_comment(&mut self, comment: &str);
+    fn emit_line_with_comment(&mut self, line: &str, comment: Option<&str>) {
+        if let Some(comment) = comment {
+            self.emit_line(&format!("{:40} ; {}", line, comment));
+        } else {
+            self.emit_line(line);
+        }
+    }
 }
 
 pub trait CodeEmitter: Emitter {

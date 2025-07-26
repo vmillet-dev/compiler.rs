@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::ir::IrProgram;
 use super::emitter::Emitter;
+use super::target::{Target, TargetPlatform, create_target};
 
 mod function_generator;
 mod stack_manager;
@@ -20,10 +21,15 @@ pub struct IrCodegen {
     pub temp_locations: HashMap<usize, i32>, // Map temp variables to stack locations
     pub data_strings: HashMap<String, String>,
     pub label_count: usize,
+    pub target: Box<dyn Target>,
 }
 
 impl IrCodegen {
     pub fn new() -> Self {
+        Self::new_with_target(TargetPlatform::WindowsX64)
+    }
+    
+    pub fn new_with_target(target_platform: TargetPlatform) -> Self {
         Self {
             output: String::new(),
             stack_offset: 0,
@@ -31,6 +37,7 @@ impl IrCodegen {
             temp_locations: HashMap::new(),
             data_strings: HashMap::new(),
             label_count: 0,
+            target: create_target(target_platform),
         }
     }
 
@@ -38,36 +45,48 @@ impl IrCodegen {
     pub fn generate(mut self, ir_program: &IrProgram) -> String {
         // Assembly file header
         self.emit_section_header("MINI-C COMPILER GENERATED ASSEMBLY (FROM IR)");
-        self.emit_comment("Target: x86-64 Windows");
-        self.emit_comment("Calling Convention: Microsoft x64");
+        self.emit_comment(&format!("Target: {}", self.target.arch_name()));
+        self.emit_comment(&format!("Calling Convention: {}", self.target.calling_convention_name()));
         self.emit_comment("Generated from: Intermediate Representation");
         self.emit_line("");
         
         // Assembly directives
         self.emit_comment("Assembly configuration");
-        self.emit_line("bits 64");
-        self.emit_line("default rel");
-        self.emit_line("global main");
-        self.emit_line("extern printf");
+        for directive in self.target.assembly_directives() {
+            self.emit_line(&directive);
+        }
+        
+        // Global and external declarations
+        for global in self.target.global_declarations(&["main"]) {
+            self.emit_line(&global);
+        }
+        for external in self.target.external_declarations() {
+            self.emit_line(&external);
+        }
 
         // Data section - process global strings
         self.emit_section_header("DATA SECTION - String Literals and Constants");
-        self.emit_line("section .data");
+        self.emit_line(&self.target.data_section_header());
 
         if ir_program.global_strings.is_empty() {
             self.emit_comment("No string literals found");
         } else {
             for (label, content) in &ir_program.global_strings {
-                let formatted_content = content.replace('\n', "").replace("%f", "%.2f");
                 self.emit_comment(&format!("String constant: \"{}\"", content.replace('\n', "\\n")));
-                self.emit_line(&format!("    {}: db \"{}\", 10, 0", label, formatted_content));
+                let formatted_literal = self.target.format_string_literal(label, content);
+                self.emit_line(&formatted_literal);
                 self.data_strings.insert(label.clone(), content.clone());
             }
         }
 
         // Text section
         self.emit_section_header("TEXT SECTION - Executable Code");
-        self.emit_line("section .text");
+        self.emit_line(&self.target.text_section_header());
+        
+        // Add startup code if needed
+        for startup_line in self.target.startup_code() {
+            self.emit_line(&startup_line);
+        }
 
         // Generate code for each function
         for function in &ir_program.functions {

@@ -15,7 +15,7 @@ impl IrCodegen {
             let dest_operand = self.ir_value_to_operand(dest_val);
             let register = match return_type {
                 IrType::Float => Register::Xmm0,
-                _ => Register::Eax,
+                _ => self.target.return_register(),
             };
             
             match return_type {
@@ -41,22 +41,21 @@ impl IrCodegen {
         
         // Handle printf call - simplified implementation
         if let IrValue::StringConstant(label) = format_string {
-            self.emit_instruction_with_comment(Instruction::Lea, vec![
-                Operand::Register(Register::Rcx),
-                Operand::Label(label.clone())
-            ], Some("load format string"));
+            let param_regs = self.target.parameter_registers();
+            if !param_regs.is_empty() {
+                self.emit_instruction_with_comment(Instruction::Lea, vec![
+                    Operand::Register(param_regs[0]),
+                    Operand::Label(label.clone())
+                ], Some("load format string"));
+            }
             
             // Load arguments into registers with proper float handling
             for (i, arg) in args.iter().enumerate() {
-                let reg = match i {
-                    0 => Register::Rdx,
-                    1 => Register::R8,
-                    2 => Register::R9,
-                    _ => {
-                        self.emit_comment("Too many arguments for simplified printf");
-                        break;
-                    }
-                };
+                if i + 1 >= param_regs.len() {
+                    self.emit_comment("Too many arguments for simplified printf");
+                    break;
+                }
+                let reg = param_regs[i + 1]; // +1 because first param is format string
                 
                 // Handle different argument types
                 match arg {
@@ -113,9 +112,10 @@ impl IrCodegen {
                 }
             }
             
-            self.emit_instruction_with_comment(Instruction::Call, vec![
-                Operand::Label("printf".to_string())
-            ], Some("call printf"));
+            let call_instructions = self.target.format_function_call("printf");
+            for call_instr in call_instructions {
+                self.emit_line_with_comment(&format!("    {}", call_instr), Some("call printf"));
+            }
         }
     }
 }
