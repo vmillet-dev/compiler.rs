@@ -10,9 +10,6 @@ mod ir_integration_tests {
         let mut parser = Parser::new(tokens);
         let ast = parser.parse();
 
-        let mut direct_codegen = IrGenerator::new();
-        let direct_asm = direct_codegen.generate(&ast);
-
         let mut ir_generator = IrGenerator::new();
         let ir_program = ir_generator.generate(&ast).expect("IR generation should succeed");
         let ir_output = format!("{}", ir_program);
@@ -20,7 +17,9 @@ mod ir_integration_tests {
         let ir_codegen = IrCodegen::new();
         let ir_asm = ir_codegen.generate(&ir_program);
 
-        (direct_asm, ir_asm, ir_output, source.to_string())
+        // For now, we only have IR-based compilation, so we return the same assembly for both
+        // The first return value is kept for backward compatibility but is the same as the second
+        (ir_asm.clone(), ir_asm, ir_output, source.to_string())
     }
 
     fn validate_ir_structure(ir_output: &str, expected_elements: &[&str]) {

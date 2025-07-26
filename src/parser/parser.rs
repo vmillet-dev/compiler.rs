@@ -1102,7 +1102,7 @@ mod tests {
                         Stmt::ExprStmt(Expr::Assignment { name, value }) => {
                             assert_eq!(*name, "x");
                             match value.as_ref() {
-                                Expr::Binary { ref left, operator: TokenType::Plus, ref right } => {
+                                Expr::Binary { left, operator: TokenType::Plus, right } => {
                                     assert_eq!(**left, Expr::Identifier("x".to_string()));
                                     assert_eq!(**right, Expr::Integer(1));
                                 }
@@ -1181,7 +1181,7 @@ mod tests {
                         Expr::Assignment { name, value } => {
                             assert_eq!(name, "i");
                             match value.as_ref() {
-                                Expr::Binary { ref left, operator: TokenType::Plus, ref right } => {
+                                Expr::Binary { left, operator: TokenType::Plus, right } => {
                                     assert_eq!(**left, Expr::Identifier("i".to_string()));
                                     assert_eq!(**right, Expr::Integer(1));
                                 }
