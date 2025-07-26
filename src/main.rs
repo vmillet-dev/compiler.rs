@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::Parser;
-use compiler_minic::codegen::{IrCodegen, TargetPlatform, parse_target_platform};
+use compiler_minic::codegen::{IrBackend, TargetPlatform, parse_target_platform};
 use compiler_minic::lexer::Lexer;
 use compiler_minic::parser::Parser as MiniCParser;
 use compiler_minic::ir::{IrGenerator, IrOptimizer};
@@ -293,8 +293,9 @@ fn generate_assembly(
     fs::create_dir_all(output_dir)
         .map_err(|e| format!("Error creating output directory '{output_dir:?}': {e}"))?;
 
-    let ir_codegen = IrCodegen::new_with_target(target_platform);
-    let asm_code = ir_codegen.generate(ir_program);
+    let mut ir_backend = IrBackend::new_with_target(target_platform);
+    ir_backend.set_ir_program(ir_program.clone());
+    let asm_code = ir_backend.generate();
 
     let output_path = output_dir.join("output.asm");
     fs::write(&output_path, asm_code)

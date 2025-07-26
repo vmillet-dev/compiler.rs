@@ -1,7 +1,8 @@
-use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{IrCodegen}};
+use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator};
 
 #[cfg(test)]
 mod ir_integration_tests {
+    use compiler_minic::codegen::IrBackend;
     use super::*;
 
     fn compile_both_ways(source: &str) -> (String, String, String, String) {
@@ -13,13 +14,14 @@ mod ir_integration_tests {
         let mut ir_generator = IrGenerator::new();
         let ir_program = ir_generator.generate(&ast).expect("IR generation should succeed");
         let ir_output = format!("{}", ir_program);
-        
-        let ir_codegen = IrCodegen::new();
-        let ir_asm = ir_codegen.generate(&ir_program);
+
+        let mut ir_backend = IrBackend::new();
+        ir_backend.set_ir_program(ir_program.clone());
+        let asm_code = ir_backend.generate();
 
         // For now, we only have IR-based compilation, so we return the same assembly for both
         // The first return value is kept for backward compatibility but is the same as the second
-        (ir_asm.clone(), ir_asm, ir_output, source.to_string())
+        (asm_code.clone(), asm_code, ir_output, source.to_string())
     }
 
     fn validate_ir_structure(ir_output: &str, expected_elements: &[&str]) {
