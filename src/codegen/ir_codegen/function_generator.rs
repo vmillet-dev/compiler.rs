@@ -1,5 +1,5 @@
 use crate::ir::{IrFunction};
-use crate::codegen::instruction::{Instruction, Operand, Register};
+use crate::codegen::instruction::{Instruction, Operand};
 use crate::codegen::emitter::{Emitter, CodeEmitterWithComment};
 use super::IrCodegen;
 
