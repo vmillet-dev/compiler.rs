@@ -1,4 +1,4 @@
-use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{Codegen, IrCodegen}};
+use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{IrCodegen}};
 
 #[cfg(test)]
 mod ir_integration_tests {
@@ -10,7 +10,7 @@ mod ir_integration_tests {
         let mut parser = Parser::new(tokens);
         let ast = parser.parse();
 
-        let direct_codegen = Codegen::new();
+        let mut direct_codegen = IrGenerator::new();
         let direct_asm = direct_codegen.generate(&ast);
 
         let mut ir_generator = IrGenerator::new();
