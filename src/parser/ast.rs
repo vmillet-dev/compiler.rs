@@ -46,6 +46,18 @@ pub enum Stmt {
         condition: Expr,
         then_branch: Vec<Stmt>,
     },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
+    For {
+        init: Option<Box<Stmt>>,
+        condition: Option<Expr>,
+        update: Option<Expr>,
+        body: Vec<Stmt>,
+    },
+    Break,
+    Continue,
     Block(Vec<Stmt>),
     Function {
         return_type: Type,

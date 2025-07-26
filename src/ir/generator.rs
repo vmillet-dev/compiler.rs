@@ -10,6 +10,7 @@ pub enum IrGeneratorError {
     UnsupportedUnaryOperator(TokenType),
     ComplexFunctionCallsNotSupported,
     InvalidBinaryOperator(TokenType),
+    UnsupportedConstruct(String),
 }
 
 /// IR Generator - converts AST to IR
@@ -26,6 +27,13 @@ pub struct IrGenerator {
     string_label_counter: usize,
     local_types: HashMap<String, IrType>,
     type_checker: TypeChecker,
+    loop_stack: Vec<LoopContext>,
+}
+
+#[derive(Debug, Clone)]
+struct LoopContext {
+    continue_label: String,
+    break_label: String,
 }
 
 impl IrGenerator {
@@ -38,6 +46,7 @@ impl IrGenerator {
             string_label_counter: 0,
             local_types: HashMap::new(),
             type_checker: TypeChecker::new(),
+            loop_stack: Vec::new(),
         }
     }
 
@@ -335,6 +344,109 @@ impl IrGenerator {
                 // Functions are handled at the top level
                 return Err(IrGeneratorError::NestedFunctionsNotSupported);
             }
+            
+            Stmt::While { condition, body } => {
+                let loop_start = self.new_label("loop_start");
+                let loop_end = self.new_label("loop_end");
+                
+                self.loop_stack.push(LoopContext {
+                    continue_label: loop_start.clone(),
+                    break_label: loop_end.clone(),
+                });
+                
+                self.emit_instruction(IrInstruction::Label { name: loop_start.clone() });
+                
+                // Evaluate condition
+                let condition_val = self.generate_expr(condition);
+                
+                self.emit_instruction(IrInstruction::Branch {
+                    condition: condition_val,
+                    true_label: format!("loop_body_{}", self.label_counter - 1),
+                    false_label: loop_end.clone(),
+                });
+                
+                let body_label = format!("loop_body_{}", self.label_counter - 1);
+                self.emit_instruction(IrInstruction::Label { name: body_label });
+                
+                // Generate body
+                for stmt in body {
+                    self.generate_stmt(stmt)?;
+                }
+                
+                self.emit_instruction(IrInstruction::Jump { label: loop_start });
+                
+                self.emit_instruction(IrInstruction::Label { name: loop_end });
+                
+                self.loop_stack.pop();
+            }
+            
+            Stmt::For { init, condition, update, body } => {
+                // Generate initialization if present
+                if let Some(init_stmt) = init {
+                    self.generate_stmt(init_stmt)?;
+                }
+                
+                let loop_start = self.new_label("for_start");
+                let loop_continue = self.new_label("for_continue");
+                let loop_end = self.new_label("for_end");
+                
+                self.loop_stack.push(LoopContext {
+                    continue_label: loop_continue.clone(),
+                    break_label: loop_end.clone(),
+                });
+                
+                self.emit_instruction(IrInstruction::Label { name: loop_start.clone() });
+                
+                if let Some(cond) = condition {
+                    let condition_val = self.generate_expr(cond);
+                    self.emit_instruction(IrInstruction::Branch {
+                        condition: condition_val,
+                        true_label: format!("for_body_{}", self.label_counter - 2),
+                        false_label: loop_end.clone(),
+                    });
+                    
+                    let body_label = format!("for_body_{}", self.label_counter - 2);
+                    self.emit_instruction(IrInstruction::Label { name: body_label });
+                }
+                
+                // Generate body
+                for stmt in body {
+                    self.generate_stmt(stmt)?;
+                }
+                
+                self.emit_instruction(IrInstruction::Label { name: loop_continue });
+                
+                // Generate update expression if present
+                if let Some(update_expr) = update {
+                    self.generate_expr(update_expr);
+                }
+                
+                self.emit_instruction(IrInstruction::Jump { label: loop_start });
+                
+                self.emit_instruction(IrInstruction::Label { name: loop_end });
+                
+                self.loop_stack.pop();
+            }
+            
+            Stmt::Break => {
+                if let Some(loop_ctx) = self.loop_stack.last() {
+                    self.emit_instruction(IrInstruction::Jump { 
+                        label: loop_ctx.break_label.clone() 
+                    });
+                } else {
+                    return Err(IrGeneratorError::UnsupportedConstruct("break statement outside of loop".to_string()));
+                }
+            }
+            
+            Stmt::Continue => {
+                if let Some(loop_ctx) = self.loop_stack.last() {
+                    self.emit_instruction(IrInstruction::Jump { 
+                        label: loop_ctx.continue_label.clone() 
+                    });
+                } else {
+                    return Err(IrGeneratorError::UnsupportedConstruct("continue statement outside of loop".to_string()));
+                }
+            }
         }
         Ok(())
     }
@@ -368,21 +480,103 @@ impl IrGenerator {
             }
             
             Expr::Binary { left, operator, right } => {
-                let left_value = self.generate_expr(left);
-                let right_value = self.generate_expr(right);
-                let result_temp = self.new_temp();
-                let op = IrBinaryOp::from(operator.clone());
-                let expr_type = self.infer_expr_type(expr);
-                
-                self.emit_instruction(IrInstruction::BinaryOp {
-                    dest: result_temp.clone(),
-                    op,
-                    left: left_value,
-                    right: right_value,
-                    var_type: expr_type,
-                });
-                
-                result_temp
+                match operator {
+                    TokenType::LogicalAnd => {
+                        let result_temp = self.new_temp();
+                        let false_label = self.new_label("and_false");
+                        let end_label = self.new_label("and_end");
+                        
+                        // Evaluate left operand
+                        let left_value = self.generate_expr(left);
+                        
+                        self.emit_instruction(IrInstruction::Branch {
+                            condition: left_value,
+                            true_label: format!("and_eval_right_{}", self.label_counter - 2),
+                            false_label: false_label.clone(),
+                        });
+                        
+                        // Evaluate right operand
+                        let eval_right_label = format!("and_eval_right_{}", self.label_counter - 2);
+                        self.emit_instruction(IrInstruction::Label { name: eval_right_label });
+                        let right_value = self.generate_expr(right);
+                        
+                        self.emit_instruction(IrInstruction::Move {
+                            dest: result_temp.clone(),
+                            src: right_value,
+                            var_type: IrType::Int,
+                        });
+                        self.emit_instruction(IrInstruction::Jump { label: end_label.clone() });
+                        
+                        self.emit_instruction(IrInstruction::Label { name: false_label });
+                        self.emit_instruction(IrInstruction::Move {
+                            dest: result_temp.clone(),
+                            src: IrValue::IntConstant(0),
+                            var_type: IrType::Int,
+                        });
+                        
+                        // End label
+                        self.emit_instruction(IrInstruction::Label { name: end_label });
+                        
+                        result_temp
+                    }
+                    
+                    TokenType::LogicalOr => {
+                        let result_temp = self.new_temp();
+                        let true_label = self.new_label("or_true");
+                        let end_label = self.new_label("or_end");
+                        
+                        // Evaluate left operand
+                        let left_value = self.generate_expr(left);
+                        
+                        self.emit_instruction(IrInstruction::Branch {
+                            condition: left_value,
+                            true_label: true_label.clone(),
+                            false_label: format!("or_eval_right_{}", self.label_counter - 2),
+                        });
+                        
+                        // Evaluate right operand
+                        let eval_right_label = format!("or_eval_right_{}", self.label_counter - 2);
+                        self.emit_instruction(IrInstruction::Label { name: eval_right_label });
+                        let right_value = self.generate_expr(right);
+                        
+                        self.emit_instruction(IrInstruction::Move {
+                            dest: result_temp.clone(),
+                            src: right_value,
+                            var_type: IrType::Int,
+                        });
+                        self.emit_instruction(IrInstruction::Jump { label: end_label.clone() });
+                        
+                        self.emit_instruction(IrInstruction::Label { name: true_label });
+                        self.emit_instruction(IrInstruction::Move {
+                            dest: result_temp.clone(),
+                            src: IrValue::IntConstant(1),
+                            var_type: IrType::Int,
+                        });
+                        
+                        // End label
+                        self.emit_instruction(IrInstruction::Label { name: end_label });
+                        
+                        result_temp
+                    }
+                    
+                    _ => {
+                        let left_value = self.generate_expr(left);
+                        let right_value = self.generate_expr(right);
+                        let result_temp = self.new_temp();
+                        let op = IrBinaryOp::from(operator.clone());
+                        let expr_type = self.infer_expr_type(expr);
+                        
+                        self.emit_instruction(IrInstruction::BinaryOp {
+                            dest: result_temp.clone(),
+                            op,
+                            left: left_value,
+                            right: right_value,
+                            var_type: expr_type,
+                        });
+                        
+                        result_temp
+                    }
+                }
             }
             
             Expr::Unary { operator, operand } => {
@@ -551,52 +745,6 @@ impl IrGenerator {
                     IrType::Int // Default fallback
                 }
             })
-    }
-    
-    /// Infer type from expression context with improved heuristics
-    fn infer_expr_type_improved(&self, expr: &Expr) -> IrType {
-        match expr {
-            Expr::Integer(_) => IrType::Int,
-            Expr::Float(_) => IrType::Float,
-            Expr::Char(_) => IrType::Char,
-            Expr::String(_) => IrType::String,
-            Expr::Identifier(name) => self.infer_identifier_type(name),
-            Expr::Binary { left, operator, right } => {
-                let left_type = self.infer_expr_type_improved(left);
-                let right_type = self.infer_expr_type_improved(right);
-                
-                match (left_type, right_type) {
-                    (IrType::Float, _) | (_, IrType::Float) => IrType::Float,
-                    (IrType::String, _) | (_, IrType::String) => {
-                        match operator {
-                            TokenType::Plus => IrType::String, // String concatenation
-                            _ => IrType::Int, // Comparison results
-                        }
-                    }
-                    _ => IrType::Int,
-                }
-            }
-            Expr::Unary { operand, .. } => self.infer_expr_type_improved(operand),
-            Expr::Call { callee, .. } => {
-                if let Expr::Identifier(name) = callee.as_ref() {
-                    if name == "printf" || name == "println" {
-                        IrType::Int
-                    } else {
-                        IrType::Int // Default for unknown functions
-                    }
-                } else {
-                    IrType::Int
-                }
-            }
-            Expr::Assignment { value, .. } => self.infer_expr_type_improved(value),
-            Expr::TypeCast { target_type, .. } => {
-                if let Some(token_type) = target_type.to_token_type() {
-                    IrType::from(token_type)
-                } else {
-                    IrType::Int
-                }
-            }
-        }
     }
 }
 

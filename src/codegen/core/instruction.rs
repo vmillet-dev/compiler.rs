@@ -1,40 +1,85 @@
+//! Assembly instruction definitions and operand types
+//! 
+//! This module defines the core instruction set, registers, operands,
+//! and sizes used in assembly code generation.
+
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+/// Assembly instruction types supported by the code generator
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instruction {
+    // Data movement
     Mov, Movsd, Movzx, Movq, Lea,
+    
+    // Stack operations
     Push, Pop,
-    Add, Sub, Imul, Idiv, Inc, Neg, Cqo, Cdq, Addsd, Subsd, Mulsd, Divsd,
+    
+    // Arithmetic operations
+    Add, Sub, Imul, Idiv, Inc, Neg, Cqo, Cdq,
+    
+    // Floating point arithmetic
+    Addsd, Subsd, Mulsd, Divsd,
+    
+    // Comparison and testing
     Cmp, Test,
+    
+    // Conditional set operations
     Sete, Setne, Setl, Setle, Setg, Setge,
+    
+    // Control flow
     Jmp, Je, Jle, Call, Ret,
+    
+    // Logical operations
     And, Or, Xor,
 }
 
+/// CPU registers available for code generation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Register {
+    // 64-bit general purpose registers
     Rax, Rbp, Rsp, Rcx, Rdx, R8, R9,
+    
+    // 32-bit general purpose registers
     Eax, Edx, R8d, R9d,
+    
+    // 8-bit registers
     Al,
+    
+    // SSE registers for floating point
     Xmm0, Xmm1, Xmm2, Xmm3,
 }
 
+/// Operand types for assembly instructions
 #[derive(Debug, Clone)]
 pub enum Operand {
+    /// Direct register reference
     Register(Register),
+    
+    /// Immediate constant value
     Immediate(i64),
+    
+    /// Memory location with base register and offset
     Memory { base: Register, offset: i32 },
+    
+    /// Label reference for jumps and calls
     Label(String),
+    
+    /// String literal (for data section)
     String(String),
 }
 
-#[derive(Debug, Clone, Copy)]
+/// Data size specifications for memory operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Size {
-    Byte, Word, Dword, Qword,
+    Byte,   // 8-bit
+    Word,   // 16-bit
+    Dword,  // 32-bit
+    Qword,  // 64-bit
 }
 
 impl Instruction {
-    pub fn to_string(&self) -> &'static str {
+    /// Get the string representation of the instruction
+    pub fn as_str(&self) -> &'static str {
         match self {
             Instruction::Mov => "mov",
             Instruction::Movsd => "movsd",
@@ -73,10 +118,24 @@ impl Instruction {
             Instruction::Xor => "xor",
         }
     }
+    
+    /// Check if this instruction modifies the stack pointer
+    pub fn modifies_stack(&self) -> bool {
+        matches!(self, Instruction::Push | Instruction::Pop | Instruction::Call | Instruction::Ret)
+    }
+    
+    /// Check if this instruction is a control flow instruction
+    pub fn is_control_flow(&self) -> bool {
+        matches!(self, 
+            Instruction::Jmp | Instruction::Je | Instruction::Jle | 
+            Instruction::Call | Instruction::Ret
+        )
+    }
 }
 
 impl Register {
-    pub fn to_string(&self) -> &'static str {
+    /// Get the string representation of the register
+    pub fn as_str(&self) -> &'static str {
         match self {
             Register::Rax => "rax",
             Register::Rbp => "rbp",
@@ -96,17 +155,56 @@ impl Register {
             Register::Xmm3 => "xmm3",
         }
     }
+    
+    /// Get the size of the register in bytes
+    pub fn size_bytes(&self) -> usize {
+        match self {
+            Register::Al => 1,
+            Register::Eax | Register::Edx | Register::R8d | Register::R9d => 4,
+            Register::Rax | Register::Rbp | Register::Rsp | Register::Rcx | 
+            Register::Rdx | Register::R8 | Register::R9 => 8,
+            Register::Xmm0 | Register::Xmm1 | Register::Xmm2 | Register::Xmm3 => 16,
+        }
+    }
+    
+    /// Check if this is a floating point register
+    pub fn is_float_register(&self) -> bool {
+        matches!(self, Register::Xmm0 | Register::Xmm1 | Register::Xmm2 | Register::Xmm3)
+    }
 }
 
+impl Size {
+    /// Get the size in bytes
+    pub fn bytes(&self) -> usize {
+        match self {
+            Size::Byte => 1,
+            Size::Word => 2,
+            Size::Dword => 4,
+            Size::Qword => 8,
+        }
+    }
+    
+    /// Get the NASM size specifier
+    pub fn nasm_specifier(&self) -> &'static str {
+        match self {
+            Size::Byte => "byte",
+            Size::Word => "word",
+            Size::Dword => "dword",
+            Size::Qword => "qword",
+        }
+    }
+}
+
+// Display implementations for formatting
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.as_str())
     }
 }
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -116,7 +214,9 @@ impl fmt::Display for Operand {
             Operand::Register(reg) => write!(f, "{}", reg),
             Operand::Immediate(val) => write!(f, "{}", val),
             Operand::Memory { base, offset } => {
-                if *offset >= 0 {
+                if *offset == 0 {
+                    write!(f, "[{}]", base)
+                } else if *offset > 0 {
                     write!(f, "[{}+{}]", base, offset)
                 } else {
                     write!(f, "[{}{}]", base, offset)
@@ -130,12 +230,6 @@ impl fmt::Display for Operand {
 
 impl fmt::Display for Size {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let size_str = match self {
-            Size::Byte => "byte",
-            Size::Word => "word",
-            Size::Dword => "dword",
-            Size::Qword => "qword",
-        };
-        write!(f, "{}", size_str)
+        write!(f, "{}", self.nasm_specifier())
     }
 }

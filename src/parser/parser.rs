@@ -1,5 +1,5 @@
 use crate::lexer::{Token, TokenType};
-use crate::parser::ast::{Expr, Stmt};
+use crate::parser::ast::{Expr, Stmt, Parameter};
 use crate::types::Type;
 use crate::error::error::CompilerError;
 
@@ -46,6 +46,24 @@ impl Parser {
         let return_type = self.consume_type()?;
         let name = self.consume_identifier()?;
         self.consume(TokenType::LeftParen)?;
+        
+        // Parse function parameters
+        let mut parameters = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                let param_type = self.consume_type()?;
+                let param_name = self.consume_identifier()?;
+                parameters.push(Parameter {
+                    name: param_name,
+                    param_type: Type::from(param_type),
+                    is_mutable: false,
+                });
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        
         self.consume(TokenType::RightParen)?;
         self.consume(TokenType::LeftBrace)?;
 
@@ -64,7 +82,7 @@ impl Parser {
             return_type: Type::from(return_type),
             name,
             type_parameters: Vec::new(), // TODO: Parse generic type parameters
-            parameters: Vec::new(),      // TODO: Parse function parameters
+            parameters,
             body,
         })
     }
@@ -104,6 +122,63 @@ impl Parser {
             }
             self.consume(TokenType::RightBrace)?;
             return Some(Stmt::If { condition, then_branch });
+        }
+
+        if self.match_token(&TokenType::While) {
+            self.consume(TokenType::LeftParen)?;
+            let condition = self.expression()?;
+            self.consume(TokenType::RightParen)?;
+            self.consume(TokenType::LeftBrace)?;
+            let mut body = Vec::new();
+            while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                body.push(self.statement()?);
+            }
+            self.consume(TokenType::RightBrace)?;
+            return Some(Stmt::While { condition, body });
+        }
+
+        if self.match_token(&TokenType::For) {
+            self.consume(TokenType::LeftParen)?;
+            let init = if self.check(&TokenType::Semicolon) {
+                None
+            } else {
+                Some(Box::new(self.statement()?))
+            };
+            if init.is_none() {
+                self.consume(TokenType::Semicolon)?;
+            }
+            
+            let condition = if self.check(&TokenType::Semicolon) {
+                None
+            } else {
+                Some(self.expression()?)
+            };
+            self.consume(TokenType::Semicolon)?;
+            
+            let update = if self.check(&TokenType::RightParen) {
+                None
+            } else {
+                Some(self.expression()?)
+            };
+            self.consume(TokenType::RightParen)?;
+            
+            self.consume(TokenType::LeftBrace)?;
+            let mut body = Vec::new();
+            while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                body.push(self.statement()?);
+            }
+            self.consume(TokenType::RightBrace)?;
+            return Some(Stmt::For { init, condition, update, body });
+        }
+
+        if self.match_token(&TokenType::Break) {
+            self.consume(TokenType::Semicolon)?;
+            return Some(Stmt::Break);
+        }
+
+        if self.match_token(&TokenType::Continue) {
+            self.consume(TokenType::Semicolon)?;
+            return Some(Stmt::Continue);
         }
 
         if self.match_token(&TokenType::Println) {
@@ -199,7 +274,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Option<Expr> {
-        let expr = self.equality()?;
+        let expr = self.logical_or()?;
 
         // Check if this is an assignment (identifier = expression)
         if let Expr::Identifier(name) = expr {
@@ -214,6 +289,32 @@ impl Parser {
             return Some(Expr::Identifier(name));
         }
 
+        Some(expr)
+    }
+
+    fn logical_or(&mut self) -> Option<Expr> {
+        let mut expr = self.logical_and()?;
+        while let Some(op) = self.match_any(&[TokenType::LogicalOr]) {
+            let right = self.logical_and()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: op,
+                right: Box::new(right),
+            };
+        }
+        Some(expr)
+    }
+
+    fn logical_and(&mut self) -> Option<Expr> {
+        let mut expr = self.equality()?;
+        while let Some(op) = self.match_any(&[TokenType::LogicalAnd]) {
+            let right = self.equality()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: op,
+                right: Box::new(right),
+            };
+        }
         Some(expr)
     }
 
@@ -834,5 +935,317 @@ mod tests {
         let mut parser = Parser::new(tokens);
         let result = parser.parse();
         assert!(result.is_empty(), "Should return empty vector for empty token stream");
+    }
+
+    #[test]
+    fn test_parse_function_with_parameters() {
+        // Test parsing: "int add(int a, float b) { return a + b; }"
+        let tokens = vec![
+            create_token(TokenType::Int, "int"),
+            create_token(TokenType::Identifier("add".to_string()), "add"),
+            create_token(TokenType::LeftParen, "("),
+            create_token(TokenType::Int, "int"),
+            create_token(TokenType::Identifier("a".to_string()), "a"),
+            create_token(TokenType::Comma, ","),
+            create_token(TokenType::FloatType, "float"),
+            create_token(TokenType::Identifier("b".to_string()), "b"),
+            create_token(TokenType::RightParen, ")"),
+            create_token(TokenType::LeftBrace, "{"),
+            create_token(TokenType::Return, "return"),
+            create_token(TokenType::Identifier("a".to_string()), "a"),
+            create_token(TokenType::Plus, "+"),
+            create_token(TokenType::Identifier("b".to_string()), "b"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::RightBrace, "}"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            Stmt::Function { return_type, name, parameters, body, .. } => {
+                assert_eq!(*return_type, Type::from(TokenType::Int));
+                assert_eq!(*name, "add");
+                assert_eq!(parameters.len(), 2);
+                
+                assert_eq!(parameters[0].name, "a");
+                assert_eq!(parameters[0].param_type, Type::from(TokenType::Int));
+                
+                assert_eq!(parameters[1].name, "b");
+                assert_eq!(parameters[1].param_type, Type::from(TokenType::FloatType));
+                
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected function statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_logical_and_operator() {
+        // Test parsing: "x && y"
+        let tokens = vec![
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::LogicalAnd, "&&"),
+            create_token(TokenType::Identifier("y".to_string()), "y"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(expr) = parser.expression() {
+            match expr {
+                Expr::Binary { left, operator, right } => {
+                    assert_eq!(*left, Expr::Identifier("x".to_string()));
+                    assert_eq!(operator, TokenType::LogicalAnd);
+                    assert_eq!(*right, Expr::Identifier("y".to_string()));
+                }
+                _ => panic!("Expected binary expression with logical AND"),
+            }
+        } else {
+            panic!("Failed to parse logical AND expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_logical_or_operator() {
+        // Test parsing: "x || y"
+        let tokens = vec![
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::LogicalOr, "||"),
+            create_token(TokenType::Identifier("y".to_string()), "y"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(expr) = parser.expression() {
+            match expr {
+                Expr::Binary { left, operator, right } => {
+                    assert_eq!(*left, Expr::Identifier("x".to_string()));
+                    assert_eq!(operator, TokenType::LogicalOr);
+                    assert_eq!(*right, Expr::Identifier("y".to_string()));
+                }
+                _ => panic!("Expected binary expression with logical OR"),
+            }
+        } else {
+            panic!("Failed to parse logical OR expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_logical_operator_precedence() {
+        // Test parsing: "a || b && c" should be "a || (b && c)"
+        let tokens = vec![
+            create_token(TokenType::Identifier("a".to_string()), "a"),
+            create_token(TokenType::LogicalOr, "||"),
+            create_token(TokenType::Identifier("b".to_string()), "b"),
+            create_token(TokenType::LogicalAnd, "&&"),
+            create_token(TokenType::Identifier("c".to_string()), "c"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(expr) = parser.expression() {
+            match expr {
+                Expr::Binary { left, operator: TokenType::LogicalOr, right } => {
+                    assert_eq!(*left, Expr::Identifier("a".to_string()));
+                    match *right {
+                        Expr::Binary { ref left, operator: TokenType::LogicalAnd, ref right } => {
+                            assert_eq!(**left, Expr::Identifier("b".to_string()));
+                            assert_eq!(**right, Expr::Identifier("c".to_string()));
+                        }
+                        _ => panic!("Expected logical AND in right side"),
+                    }
+                }
+                _ => panic!("Expected logical OR expression"),
+            }
+        } else {
+            panic!("Failed to parse logical operator precedence");
+        }
+    }
+
+    #[test]
+    fn test_parse_while_loop() {
+        // Test parsing: "while (x < 10) { x = x + 1; }"
+        let tokens = vec![
+            create_token(TokenType::While, "while"),
+            create_token(TokenType::LeftParen, "("),
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::LessThan, "<"),
+            create_token(TokenType::Integer(10), "10"),
+            create_token(TokenType::RightParen, ")"),
+            create_token(TokenType::LeftBrace, "{"),
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::Assign, "="),
+            create_token(TokenType::Identifier("x".to_string()), "x"),
+            create_token(TokenType::Plus, "+"),
+            create_token(TokenType::Integer(1), "1"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::RightBrace, "}"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(stmt) = parser.statement() {
+            match stmt {
+                Stmt::While { condition, body } => {
+                    match condition {
+                        Expr::Binary { left, operator, right } => {
+                            assert_eq!(*left, Expr::Identifier("x".to_string()));
+                            assert_eq!(operator, TokenType::LessThan);
+                            assert_eq!(*right, Expr::Integer(10));
+                        }
+                        _ => panic!("Expected binary expression in while condition"),
+                    }
+                    assert_eq!(body.len(), 1);
+                    match &body[0] {
+                        Stmt::ExprStmt(Expr::Assignment { name, value }) => {
+                            assert_eq!(*name, "x");
+                            match value.as_ref() {
+                                Expr::Binary { left, operator: TokenType::Plus, right } => {
+                                    assert_eq!(**left, Expr::Identifier("x".to_string()));
+                                    assert_eq!(**right, Expr::Integer(1));
+                                }
+                                _ => panic!("Expected addition in assignment"),
+                            }
+                        }
+                        _ => panic!("Expected assignment in while body"),
+                    }
+                }
+                _ => panic!("Expected while statement"),
+            }
+        } else {
+            panic!("Failed to parse while statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_for_loop() {
+        // Test parsing: "for (int i = 0; i < 10; i = i + 1) { println("Hello"); }"
+        let tokens = vec![
+            create_token(TokenType::For, "for"),
+            create_token(TokenType::LeftParen, "("),
+            create_token(TokenType::Int, "int"),
+            create_token(TokenType::Identifier("i".to_string()), "i"),
+            create_token(TokenType::Assign, "="),
+            create_token(TokenType::Integer(0), "0"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::Identifier("i".to_string()), "i"),
+            create_token(TokenType::LessThan, "<"),
+            create_token(TokenType::Integer(10), "10"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::Identifier("i".to_string()), "i"),
+            create_token(TokenType::Assign, "="),
+            create_token(TokenType::Identifier("i".to_string()), "i"),
+            create_token(TokenType::Plus, "+"),
+            create_token(TokenType::Integer(1), "1"),
+            create_token(TokenType::RightParen, ")"),
+            create_token(TokenType::LeftBrace, "{"),
+            create_token(TokenType::Println, "println"),
+            create_token(TokenType::LeftParen, "("),
+            create_token(TokenType::String("Hello".to_string()), "\"Hello\""),
+            create_token(TokenType::RightParen, ")"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::RightBrace, "}"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(stmt) = parser.statement() {
+            match stmt {
+                Stmt::For { init, condition, update, body } => {
+                    // Check init: int i = 0
+                    assert!(init.is_some());
+                    match init.unwrap().as_ref() {
+                        Stmt::VarDecl { var_type, name, initializer } => {
+                            assert_eq!(*var_type, Type::from(TokenType::Int));
+                            assert_eq!(name, "i");
+                            assert_eq!(*initializer, Some(Expr::Integer(0)));
+                        }
+                        _ => panic!("Expected variable declaration in for init"),
+                    }
+                    
+                    // Check condition: i < 10
+                    assert!(condition.is_some());
+                    match condition.unwrap() {
+                        Expr::Binary { left, operator, right } => {
+                            assert_eq!(*left, Expr::Identifier("i".to_string()));
+                            assert_eq!(operator, TokenType::LessThan);
+                            assert_eq!(*right, Expr::Integer(10));
+                        }
+                        _ => panic!("Expected binary expression in for condition"),
+                    }
+                    
+                    assert!(update.is_some());
+                    match update.unwrap() {
+                        Expr::Assignment { name, value } => {
+                            assert_eq!(name, "i");
+                            match value.as_ref() {
+                                Expr::Binary { left, operator: TokenType::Plus, right } => {
+                                    assert_eq!(**left, Expr::Identifier("i".to_string()));
+                                    assert_eq!(**right, Expr::Integer(1));
+                                }
+                                _ => panic!("Expected addition in for update"),
+                            }
+                        }
+                        _ => panic!("Expected assignment in for update"),
+                    }
+                    
+                    assert_eq!(body.len(), 1);
+                    match &body[0] {
+                        Stmt::PrintStmt { format_string, args } => {
+                            assert_eq!(*format_string, Expr::String("Hello".to_string()));
+                            assert!(args.is_empty());
+                        }
+                        _ => panic!("Expected print statement in for body"),
+                    }
+                }
+                _ => panic!("Expected for statement"),
+            }
+        } else {
+            panic!("Failed to parse for statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_break_statement() {
+        // Test parsing: "break;"
+        let tokens = vec![
+            create_token(TokenType::Break, "break"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(stmt) = parser.statement() {
+            match stmt {
+                Stmt::Break => {
+                }
+                _ => panic!("Expected break statement"),
+            }
+        } else {
+            panic!("Failed to parse break statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_continue_statement() {
+        // Test parsing: "continue;"
+        let tokens = vec![
+            create_token(TokenType::Continue, "continue"),
+            create_token(TokenType::Semicolon, ";"),
+            create_token(TokenType::Eof, ""),
+        ];
+
+        let mut parser = Parser::new(tokens);
+        if let Some(stmt) = parser.statement() {
+            match stmt {
+                Stmt::Continue => {
+                }
+                _ => panic!("Expected continue statement"),
+            }
+        } else {
+            panic!("Failed to parse continue statement");
+        }
     }
 }

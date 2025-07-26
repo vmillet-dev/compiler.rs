@@ -1,4 +1,4 @@
 mod parser;
-pub(crate) mod ast;
+pub mod ast;
 
 pub use parser::Parser;
