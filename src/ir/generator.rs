@@ -746,52 +746,6 @@ impl IrGenerator {
                 }
             })
     }
-    
-    /// Infer type from expression context with improved heuristics
-    fn infer_expr_type_improved(&self, expr: &Expr) -> IrType {
-        match expr {
-            Expr::Integer(_) => IrType::Int,
-            Expr::Float(_) => IrType::Float,
-            Expr::Char(_) => IrType::Char,
-            Expr::String(_) => IrType::String,
-            Expr::Identifier(name) => self.infer_identifier_type(name),
-            Expr::Binary { left, operator, right } => {
-                let left_type = self.infer_expr_type_improved(left);
-                let right_type = self.infer_expr_type_improved(right);
-                
-                match (left_type, right_type) {
-                    (IrType::Float, _) | (_, IrType::Float) => IrType::Float,
-                    (IrType::String, _) | (_, IrType::String) => {
-                        match operator {
-                            TokenType::Plus => IrType::String, // String concatenation
-                            _ => IrType::Int, // Comparison results
-                        }
-                    }
-                    _ => IrType::Int,
-                }
-            }
-            Expr::Unary { operand, .. } => self.infer_expr_type_improved(operand),
-            Expr::Call { callee, .. } => {
-                if let Expr::Identifier(name) = callee.as_ref() {
-                    if name == "printf" || name == "println" {
-                        IrType::Int
-                    } else {
-                        IrType::Int // Default for unknown functions
-                    }
-                } else {
-                    IrType::Int
-                }
-            }
-            Expr::Assignment { value, .. } => self.infer_expr_type_improved(value),
-            Expr::TypeCast { target_type, .. } => {
-                if let Some(token_type) = target_type.to_token_type() {
-                    IrType::from(token_type)
-                } else {
-                    IrType::Int
-                }
-            }
-        }
-    }
 }
 
 impl Default for IrGenerator {

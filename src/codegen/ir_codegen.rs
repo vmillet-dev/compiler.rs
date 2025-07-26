@@ -798,22 +798,6 @@ impl IrCodegen {
             IrValue::Global(name) => format!("@{}", name),
         }
     }
-
-    fn preload_float_constant(&mut self, float_value: f64) -> Operand {
-        let float_bits = float_value.to_bits() as i64;
-        self.emit_instruction_with_comment(Instruction::Mov, vec![
-            Operand::Register(Register::Rax),
-            Operand::Immediate(float_bits)
-        ], Some("load float bits"));
-        
-        let temp_offset = -8; // Use a temporary stack slot
-        self.emit_instruction_with_comment(Instruction::Mov, vec![
-            Operand::Memory { base: Register::Rsp, offset: temp_offset },
-            Operand::Register(Register::Rax)
-        ], Some("store float to temp memory"));
-        
-        Operand::Memory { base: Register::Rsp, offset: temp_offset }
-    }
 }
 
 // Implement the emitter traits for IrCodegen
