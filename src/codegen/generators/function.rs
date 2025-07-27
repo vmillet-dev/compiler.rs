@@ -1,9 +1,9 @@
 use crate::ir::{IrFunction};
-use crate::codegen::instruction::{Instruction, Operand};
-use crate::codegen::emitter::{Emitter, CodeEmitterWithComment};
-use super::IrCodegen;
+use crate::codegen::core::{Instruction, Operand};
+use crate::codegen::core::{Emitter, CodeEmitterWithComment};
+use crate::codegen::backend::IrBackend;
 
-impl IrCodegen {
+impl IrBackend {
     /// Generate assembly for a single function
     pub fn generate_function(&mut self, function: &IrFunction) {
         self.emit_subsection_header(&format!("FUNCTION: {}", function.name));

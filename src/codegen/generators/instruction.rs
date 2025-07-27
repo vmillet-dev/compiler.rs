@@ -1,9 +1,9 @@
 use crate::ir::{IrInstruction, IrValue, IrType};
-use crate::codegen::instruction::{Instruction, Operand, Register, Size};
-use crate::codegen::emitter::{Emitter, CodeEmitter, CodeEmitterWithComment};
-use super::IrCodegen;
+use crate::codegen::core::{Instruction, Operand, Register, Size};
+use crate::codegen::core::{Emitter, CodeEmitter, CodeEmitterWithComment};
+use crate::codegen::backend::IrBackend;
 
-impl IrCodegen {
+impl IrBackend {
     /// Generate assembly for a single IR instruction
     pub fn generate_instruction(&mut self, instruction: &IrInstruction) {
         match instruction {

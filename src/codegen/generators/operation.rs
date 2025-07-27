@@ -1,9 +1,9 @@
 use crate::ir::{IrValue, IrType, IrBinaryOp, IrUnaryOp};
-use crate::codegen::instruction::{Instruction, Operand, Register};
-use crate::codegen::emitter::{Emitter, CodeEmitter, CodeEmitterWithComment};
-use super::IrCodegen;
+use crate::codegen::core::{Instruction, Operand, Register};
+use crate::codegen::core::{Emitter, CodeEmitter, CodeEmitterWithComment};
+use crate::codegen::backend::IrBackend;
 
-impl IrCodegen {
+impl IrBackend {
     /// Generate binary operation
     pub fn generate_binary_op(&mut self, dest: &IrValue, op: &IrBinaryOp, left: &IrValue, right: &IrValue, var_type: &IrType) {
         let dest_operand = self.ir_value_to_operand(dest);

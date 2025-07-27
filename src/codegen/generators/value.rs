@@ -1,8 +1,8 @@
 use crate::ir::{IrValue, IrType};
-use crate::codegen::instruction::{Operand, Register, Size};
-use super::IrCodegen;
+use crate::codegen::core::{Operand, Register, Size};
+use crate::codegen::backend::IrBackend;
 
-impl IrCodegen {
+impl IrBackend {
     /// Convert IR value to assembly operand
     pub fn ir_value_to_operand(&self, value: &IrValue) -> Operand {
         match value {

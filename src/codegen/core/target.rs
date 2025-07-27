@@ -1,4 +1,4 @@
-use crate::codegen::instruction::Register;
+use super::instruction::Register;
 
 /// Represents different target platforms
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
