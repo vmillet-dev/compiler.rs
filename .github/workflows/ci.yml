@@ -128,4 +128,4 @@ jobs:
     
     - name: Execute the binary (macOS)
       if: matrix.os == 'macos-latest'
-      run: arch -x86_64 ./build/output${{ matrix.executable_ext }}
+      run: arch -aarch64 ./build/output${{ matrix.executable_ext }}
