@@ -48,12 +48,12 @@ jobs:
           - os: ubuntu-latest
             target: linux-x64
             nasm_format: elf64
-            executable_ext: ""
+            executable_ext: "_linux"
             continue_on_error: true
           - os: macos-latest
             target: macos-auto
             nasm_format: macho64
-            executable_ext: ""
+            executable_ext: "_macos"
             continue_on_error: true
       fail-fast: false  # Don't cancel other jobs if one fails
     runs-on: ${{ matrix.os }}
