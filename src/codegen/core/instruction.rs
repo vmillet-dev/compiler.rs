@@ -13,8 +13,8 @@ pub enum Instruction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Register {
-    Rax, Rbp, Rsp, Rcx, Rdx, R8, R9,
-    Eax, Edx, R8d, R9d,
+    Rax, Rbp, Rsp, Rcx, Rdx, R8, R9, Rdi, Rsi,
+    Eax, Edx, R8d, R9d, Edi, Esi,
     Al,
     Xmm0, Xmm1, Xmm2, Xmm3,
 }
@@ -85,10 +85,14 @@ impl Register {
             Register::Rdx => "rdx",
             Register::R8 => "r8",
             Register::R9 => "r9",
+            Register::Rdi => "rdi",
+            Register::Rsi => "rsi",
             Register::Eax => "eax",
             Register::Edx => "edx",
             Register::R8d => "r8d",
             Register::R9d => "r9d",
+            Register::Edi => "edi",
+            Register::Esi => "esi",
             Register::Al => "al",
             Register::Xmm0 => "xmm0",
             Register::Xmm1 => "xmm1",

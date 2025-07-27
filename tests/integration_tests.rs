@@ -1,4 +1,4 @@
-use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{Codegen, IrCodegen}};
+use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{Codegen}};
 
 #[cfg(test)]
 mod ir_integration_tests {
@@ -10,17 +10,16 @@ mod ir_integration_tests {
         let mut parser = Parser::new(tokens);
         let ast = parser.parse();
 
-        let direct_codegen = Codegen::new();
-        let direct_asm = direct_codegen.generate(&ast);
-
         let mut ir_generator = IrGenerator::new();
         let ir_program = ir_generator.generate(&ast).expect("IR generation should succeed");
         let ir_output = format!("{}", ir_program);
         
-        let ir_codegen = IrCodegen::new();
+        let ir_codegen = Codegen::new();
         let ir_asm = ir_codegen.generate(&ir_program);
 
-        (direct_asm, ir_asm, ir_output, source.to_string())
+        // For now, we only have IR-based compilation, so we return the same assembly for both
+        // The first return value is kept for backward compatibility but is the same as the second
+        (ir_asm.clone(), ir_asm, ir_output, source.to_string())
     }
 
     fn validate_ir_structure(ir_output: &str, expected_elements: &[&str]) {
@@ -472,5 +471,227 @@ int main() {
 
         validate_asm_structure(&direct_asm, &["mov"]);
         validate_asm_structure(&ir_asm, &["mov"]);
+    }
+
+    #[test]
+    fn test_function_with_parameters() {
+        let source = r#"
+int add(int a, int b) {
+    return a + b;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "define i32 @add(i32 %a, i32 %b)",
+            "load i32, %a",
+            "load i32, %b",
+            "add i32"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["add:", "mov", "add"]);
+    }
+
+    #[test]
+    fn test_logical_and_operator() {
+        let source = r#"
+int main() {
+    int a = 1;
+    int b = 0;
+    int result = a && b;
+    return result;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "and_false_",
+            "and_end_",
+            "and_eval_right_",
+            "br %t"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["je", "jmp"]);
+    }
+
+    #[test]
+    fn test_logical_or_operator() {
+        let source = r#"
+int main() {
+    int a = 0;
+    int b = 1;
+    int result = a || b;
+    return result;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "or_true_",
+            "or_end_",
+            "or_eval_right_",
+            "br %t"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["je", "jmp"]);
+    }
+
+    #[test]
+    fn test_complex_logical_expression() {
+        let source = r#"
+int main() {
+    int a = 1;
+    int b = 0;
+    int c = 1;
+    int result = (a && b) || c;
+    return result;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "and_false_",
+            "and_end_",
+            "or_true_",
+            "or_end_"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["je", "jmp"]);
+    }
+
+    #[test]
+    fn test_while_loop() {
+        let source = r#"
+int main() {
+    int i = 0;
+    while (i < 5) {
+        i = i + 1;
+    }
+    return i;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "loop_start_",
+            "loop_end_",
+            "loop_body_",
+            "br %t",
+            "jmp label %loop_start_"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["loop_start_", "loop_end_", "je", "jmp"]);
+    }
+
+    #[test]
+    fn test_for_loop() {
+        let source = r#"
+int main() {
+    int sum = 0;
+    for (int i = 0; i < 3; i = i + 1) {
+        sum = sum + i;
+    }
+    return sum;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "for_start_",
+            "for_end_",
+            "for_continue_",
+            "for_body_",
+            "br %t",
+            "jmp label %for_start_"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["for_start_", "for_end_", "for_continue_", "je", "jmp"]);
+    }
+
+    #[test]
+    fn test_nested_loops() {
+        let source = r#"
+int main() {
+    int sum = 0;
+    for (int i = 0; i < 2; i = i + 1) {
+        int j = 0;
+        while (j < 2) {
+            sum = sum + 1;
+            j = j + 1;
+        }
+    }
+    return sum;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "for_start_",
+            "for_end_",
+            "loop_start_",
+            "loop_end_",
+            "br %t",
+            "jmp label"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["for_start_", "loop_start_", "je", "jmp"]);
+    }
+
+    #[test]
+    fn test_break_and_continue() {
+        let source = r#"
+int main() {
+    int i = 0;
+    while (i < 10) {
+        i = i + 1;
+        if (i == 3) {
+            continue;
+        }
+        if (i == 7) {
+            break;
+        }
+    }
+    return i;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "loop_start_",
+            "loop_end_",
+            "jmp label %loop_start_",
+            "jmp label %loop_end_"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["loop_start_", "loop_end_", "jmp"]);
+    }
+
+    #[test]
+    fn test_function_parameters_with_logical_operators() {
+        let source = r#"
+int test(int x, int y) {
+    return x && y;
+}
+"#;
+
+        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+
+        validate_ir_structure(&ir_output, &[
+            "define i32 @test(i32 %x, i32 %y)",
+            "load i32, %x",
+            "load i32, %y",
+            "and_false_",
+            "and_end_"
+        ]);
+
+        validate_asm_structure(&ir_asm, &["test:", "je", "jmp"]);
     }
 }

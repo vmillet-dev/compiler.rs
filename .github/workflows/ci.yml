@@ -8,63 +8,120 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+      fail-fast: false  # Don't cancel other jobs if one fails
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'windows-latest' }}  # Allow Linux/macOS to fail
     
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Install Rust 1.88.0
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
     
     - name: Build project
       run: cargo build --verbose
 
   test:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+      fail-fast: false  # Don't cancel other jobs if one fails
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'windows-latest' }}  # Allow Linux/macOS to fail
     needs: build
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install Rust 1.88.0
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-    
     - name: Run tests
       run: cargo test --verbose
 
   run-and-execute:
-    runs-on: windows-latest
-    
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+            nasm_format: win64
+            executable_ext: .exe
+            continue_on_error: false
+          - os: ubuntu-latest
+            target: linux-x64
+            nasm_format: elf64
+            executable_ext: ""
+            continue_on_error: true
+          - os: macos-latest
+            target: macos-x64
+            nasm_format: macho64
+            executable_ext: ""
+            continue_on_error: true
+      fail-fast: false  # Don't cancel other jobs if one fails
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.continue_on_error }}  # Allow Linux/macOS to fail
+    needs: test
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Install Rust 1.88.0
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-    
-    - name: Install NASM
+
+    # Windows-specific dependencies
+    - name: Install NASM (Windows)
+      if: matrix.os == 'windows-latest'
       run: |
         choco install nasm
         & "C:\Program Files\NASM\nasm.exe" -v
     
-    - name: Install GCC (MinGW)
+    # Linux-specific dependencies
+    - name: Install NASM and GCC (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        choco install mingw
+        sudo apt-get update
+        sudo apt-get install -y nasm gcc
+        nasm -v
         gcc --version
     
-    - name: Run compiler to generate ASM
-      run: cargo run -- --ir
+    # macOS-specific dependencies
+    - name: Install NASM and GCC (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install nasm gcc
+        nasm -v
+        gcc --version
     
-    - name: Compile ASM to object file
-      run: '& "C:\Program Files\NASM\nasm.exe" -f win64 output_ir.asm -o output.obj'
+    - name: Run compiler to generate ASM for target
+      run: cargo run -- --target ${{ matrix.target }}
     
-    - name: Link and create executable
-      run: gcc -o output.exe output.obj -lmsvcrt
+    # Windows assembly and linking
+    - name: Compile ASM to object file (Windows)
+      if: matrix.os == 'windows-latest'
+      run: '& "C:\Program Files\NASM\nasm.exe" -f ${{ matrix.nasm_format }} build/output.asm -o build/output.obj'
     
-    - name: Execute the binary
-      run: .\output.exe
+    - name: Link and create executable (Windows)
+      if: matrix.os == 'windows-latest'
+      run: gcc -o build/output${{ matrix.executable_ext }} build/output.obj -lmsvcrt
+    
+    # Linux assembly and linking
+    - name: Compile ASM to object file (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: nasm -f ${{ matrix.nasm_format }} build/output.asm -o build/output.o
+    
+    - name: Link and create executable (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: gcc -o build/output${{ matrix.executable_ext }} build/output.o -no-pie
+    
+    # macOS assembly and linking
+    - name: Compile ASM to object file (macOS)
+      if: matrix.os == 'macos-latest'
+      run: nasm -f ${{ matrix.nasm_format }} build/output.asm -o build/output.o
+    
+    - name: Link and create executable (macOS)
+      if: matrix.os == 'macos-latest'
+      run: gcc -o build/output${{ matrix.executable_ext }} build/output.o
+    
+    # Execute the binary (all platforms)
+    - name: Execute the binary (Windows)
+      if: matrix.os == 'windows-latest'
+      run: .\build\output${{ matrix.executable_ext }}
+    
+    - name: Execute the binary (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./build/output${{ matrix.executable_ext }}
