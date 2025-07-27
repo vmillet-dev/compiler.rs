@@ -1,341 +1,349 @@
-# Compiler MiniC
+# MiniC Compiler
 
-A simple C-like language compiler written in Rust that compiles to x86-64 assembly.
+A modern, educational compiler for a C-like programming language, written in Rust. This project demonstrates the complete compilation pipeline from source code to executable x86-64 assembly, featuring lexical analysis, parsing, intermediate representation, optimization, and code generation.
 
 ## Overview
 
-This project implements a complete compiler pipeline for a subset of the C programming language, featuring:
-- **Lexical Analysis** (Tokenization)
-- **Syntax Analysis** (Parsing to AST)
-- **Code Generation** (x86-64 Assembly output)
+MiniC is a subset of the C programming language designed for educational purposes and compiler development learning. The compiler implements a complete toolchain that transforms C-like source code into optimized x86-64 assembly code through a sophisticated multi-stage pipeline.
 
-The compiler can handle basic C constructs including variables, functions, control flow, and basic I/O operations.
+**Key Features:**
+- **Complete Compilation Pipeline**: Lexing → Parsing → Semantic Analysis → IR Generation → Optimization → Code Generation
+- **Cross-Platform Support**: Windows, Linux, and macOS target platforms
+- **Memory Safety Analysis**: Static analysis to detect potential memory safety issues
+- **IR-Based Optimization**: Constant folding, dead code elimination, and copy propagation
+- **Professional CLI**: Modern command-line interface with comprehensive options
+- **Comprehensive Testing**: Unit and integration tests covering the entire pipeline
+
+## Installation
+
+### Prerequisites
+
+- **Rust**: Version 1.88.0 or later ([Install Rust](https://rustup.rs/))
+- **NASM**: Netwide Assembler for assembly compilation
+- **GCC**: GNU Compiler Collection for linking
+
+#### Installing Dependencies
+
+**Windows:**
+```bash
+# Install NASM via Chocolatey
+choco install nasm
+
+# Install GCC via MSYS2 or use Visual Studio Build Tools
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get update
+sudo apt-get install -y nasm gcc
+```
+
+**macOS:**
+```bash
+brew install nasm gcc
+```
+
+### Building the Compiler
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd compiler-minic
+
+# Build the project
+cargo build --release
+
+# Run tests to verify installation
+cargo test
+```
+
+## Usage
+
+### Basic Commands
+
+```bash
+# Compile with default example code
+cargo run
+
+# Compile a specific source file
+cargo run -- input.c
+
+# Show help and all available options
+cargo run -- --help
+```
+
+### Command Line Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `<FILE>` | | Input source file to compile | Built-in example |
+| `--target` | `-t` | Target platform (windows-x64, linux-x64, macos-x64, macos-arm64) | windows-x64 |
+| `--output-dir` | `-o` | Output directory for generated files | build |
+| `--verbose` | `-v` | Enable detailed compilation output | false |
+| `--skip-memory-checks` | | Skip memory safety analysis | false |
+| `--skip-optimization` | | Skip IR optimization passes | false |
+
+### Examples
+
+**Basic compilation with verbose output:**
+```bash
+cargo run -- --verbose program.c
+```
+
+**Cross-compilation for Linux:**
+```bash
+cargo run -- --target linux-x64 --output-dir ./linux_build program.c
+```
+
+**Fast development build (skip optimizations):**
+```bash
+cargo run -- --skip-optimization --skip-memory-checks --verbose program.c
+```
+
+**Complete workflow with custom output:**
+```bash
+cargo run -- --target windows-x64 --output-dir ./release --verbose program.c
+```
+
+### Assembly and Execution
+
+After compilation, assemble and link the generated code:
+
+**Windows:**
+```bash
+nasm -f win64 build/output.asm -o build/output.obj
+gcc -o build/output.exe build/output.obj -lmsvcrt
+./build/output.exe
+```
+
+**Linux:**
+```bash
+nasm -f elf64 build/output.asm -o build/output.o
+gcc -o build/output build/output.o -no-pie
+./build/output
+```
+
+**macOS:**
+```bash
+nasm -f macho64 build/output.asm -o build/output.o
+gcc -o build/output build/output.o
+./build/output
+```
 
 ## Project Structure
 
 ```
 compiler-minic/
-├── src/
-│   ├── main.rs              # Entry point and example usage
-│   ├── lib.rs               # Library root with module declarations
-│   ├── error/               # Error handling
-│   │   ├── mod.rs           # Error module exports
-│   │   └── error.rs         # CompilerError enum and implementations
-│   ├── lexer/               # Lexical analysis
-│   │   ├── mod.rs           # Lexer module exports
-│   │   ├── lexer.rs         # Lexer implementation
-│   │   └── token.rs         # Token types and definitions
-│   ├── parser/              # Syntax analysis
-│   │   ├── mod.rs           # Parser module exports
-│   │   ├── parser.rs        # Recursive descent parser
-│   │   └── ast.rs           # Abstract Syntax Tree definitions
-│   ├── ir/                  # Intermediate Representation
-│   │   ├── mod.rs           # IR module exports
-│   │   ├── ir.rs            # IR instruction definitions
-│   │   ├── generator.rs     # AST to IR translation
-│   │   └── optimizer.rs     # IR optimization passes
-│   └── codegen/             # Code generation
-│       ├── mod.rs           # Codegen module exports
-│       ├── codegen.rs       # Direct x86-64 assembly code generator
-│       ├── ir_codegen.rs    # IR to x86-64 assembly code generator
-│       ├── analyzer.rs      # AST analysis for variable types
-│       ├── expression.rs    # Expression code generation
-│       ├── statement.rs     # Statement code generation
-│       ├── emitter.rs       # Assembly instruction emission
-│       └── instruction.rs   # x86-64 instruction definitions
-├── tests/
-│   └── integration_tests.rs # Integration tests for compilation pipeline
-├── .github/
+├── src/                          # Core compiler implementation
+│   ├── main.rs                   # CLI entry point and compilation orchestration
+│   ├── lib.rs                    # Library root with module declarations
+│   ├── error/                    # Comprehensive error handling system
+│   │   ├── mod.rs                # Error module exports
+│   │   └── error.rs              # CompilerError enum with detailed error types
+│   ├── lexer/                    # Lexical analysis (tokenization)
+│   │   ├── mod.rs                # Lexer module exports
+│   │   ├── lexer.rs              # Tokenizer implementation with position tracking
+│   │   └── token.rs              # Token definitions and types
+│   ├── parser/                   # Syntax analysis and AST construction
+│   │   ├── mod.rs                # Parser module exports
+│   │   ├── parser.rs             # Recursive descent parser implementation
+│   │   └── ast.rs                # Abstract Syntax Tree node definitions
+│   ├── semantic/                 # Static analysis and memory safety
+│   │   ├── mod.rs                # Semantic analysis module exports
+│   │   └── memory_safety.rs     # Memory safety checker implementation
+│   ├── ir/                       # Intermediate Representation
+│   │   ├── mod.rs                # IR module exports
+│   │   ├── ir.rs                 # IR instruction set and data structures
+│   │   ├── generator.rs          # AST to IR translation
+│   │   └── optimizer.rs          # IR optimization passes
+│   ├── codegen/                  # Code generation to x86-64 assembly
+│   │   ├── mod.rs                # Code generation module exports and re-exports
+│   │   ├── codegen.rs            # Main code generator implementation
+│   │   ├── core/                 # Core abstractions and target implementations
+│   │   │   ├── mod.rs            # Core module exports
+│   │   │   ├── emitter.rs        # Assembly instruction emission traits
+│   │   │   ├── instruction.rs    # x86-64 instruction and operand definitions
+│   │   │   └── targets/          # Target platform implementations
+│   │   │       ├── mod.rs        # Target module exports
+│   │   │       ├── base.rs       # Base target trait and common functionality
+│   │   │       ├── windows.rs    # Windows x86-64 target implementation
+│   │   │       ├── linux.rs      # Linux x86-64 target implementation
+│   │   │       └── macos.rs      # macOS x86-64/ARM64 target implementations
+│   │   ├── utils/                # Code generation utilities
+│   │   │   ├── mod.rs            # Utils module exports
+│   │   │   ├── formatter.rs      # Assembly instruction formatting
+│   │   │   ├── stack_manager.rs  # Stack frame management
+│   │   │   └── register_allocator.rs # Register allocation utilities
+│   │   └── generators/           # Specialized code generators
+│   │       ├── mod.rs            # Generators module exports
+│   │       ├── instruction.rs    # IR instruction code generation
+│   │       ├── operation.rs      # Operation code generation
+│   │       ├── value.rs          # Value handling and conversion
+│   │       ├── function.rs       # Function prologue/epilogue generation
+│   │       └── call.rs           # Function call code generation
+│   └── types/                    # Type system and definitions
+│       ├── mod.rs                # Type system module exports
+│       └── types.rs              # Type definitions and utilities
+├── tests/                        # Comprehensive test suite
+│   └── integration_tests.rs      # End-to-end compilation pipeline tests
+├── docs/                         # Documentation and guides
+│   ├── CLI_USAGE.md              # Detailed CLI usage guide
+│   ├── IR_IMPLEMENTATION.md      # IR design and implementation details
+│   ├── TARGET_INTERFACE.md       # Target platform interface documentation
+│   └── COMPILER_REVIEW.md        # Architecture and design decisions
+├── examples/                     # Usage examples and demonstrations
+│   ├── codegen_usage.rs          # Code generation API examples
+│   └── target_demo.rs            # Target platform demonstration
+├── .github/                      # CI/CD configuration
 │   └── workflows/
-│       └── ci.yml           # GitHub Actions CI/CD pipeline
-├── Cargo.toml               # Rust project configuration
-├── .gitignore               # Git ignore rules
-├── output.asm               # Generated assembly output (direct compilation)
-└── output_ir.asm            # Generated assembly output (IR compilation)
+│       └── ci.yml                # GitHub Actions workflow
+├── Cargo.toml                    # Rust project configuration
+└── README.md                     # This file
 ```
 
-## Components
+## Architecture
 
-### 1. Error Handling (`src/error/`)
+### Compilation Pipeline
 
-**`error.rs`**: Defines comprehensive error types for all compiler phases:
-- `LexError`: Lexical analysis errors (invalid characters, malformed tokens)
-- `ParseError`: Syntax errors (unexpected tokens, malformed expressions)
-- `SemanticError`: Semantic analysis errors (type mismatches, undefined variables)
-- `CodegenError`: Code generation errors
-- `IoError`: File I/O errors
+The MiniC compiler follows a traditional multi-pass architecture:
 
-Each error includes line and column information for precise error reporting.
-
-### 2. Lexical Analysis (`src/lexer/`)
-
-**`token.rs`**: Defines the token types supported by the language:
-- **Literals**: `Integer(i64)`, `Float(f64)`, `String(String)`, `Char(char)`
-- **Keywords**: `int`, `float`, `char`, `void`, `if`, `else`, `while`, `for`, `return`, `println`
-- **Operators**: Arithmetic (`+`, `-`, `*`, `/`), comparison (`==`, `!=`, `<`, `>`), logical (`&&`, `||`)
-- **Delimiters**: Parentheses, braces, brackets, semicolons, commas
-- **Identifiers**: Variable and function names
-
-**`lexer.rs`**: Implements the lexical analyzer that:
-- Converts source code into a stream of tokens
-- Handles whitespace and comments (both `//` and `/* */` styles)
-- Tracks line and column numbers for error reporting
-- Supports string literals with escape sequences
-- Recognizes keywords vs identifiers
-
-### 3. Syntax Analysis (`src/parser/`)
-
-**`ast.rs`**: Defines the Abstract Syntax Tree node types:
-- **Expressions (`Expr`)**:
-  - Literals: `Integer`, `Float`, `Char`, `String`
-  - `Identifier`: Variable references
-  - `Binary`: Binary operations with left/right operands and operator
-  - `Call`: Function calls with callee and arguments
-- **Statements (`Stmt`)**:
-  - `ExprStmt`: Expression statements
-  - `VarDecl`: Variable declarations with type and optional initializer
-  - `Return`: Return statements
-  - `If`: Conditional statements with condition and then-branch
-  - `Block`: Statement blocks
-  - `Function`: Function definitions
-  - `PrintStmt`: Print statements with format string and arguments
-
-**`parser.rs`**: Implements a recursive descent parser that:
-- Converts token stream into an AST
-- Handles operator precedence correctly
-- Supports function definitions and calls
-- Parses control flow statements (`if`, `return`)
-- Includes comprehensive unit tests for all language constructs
-
-### 4. Intermediate Representation (`src/ir/`)
-
-**`ir.rs`**: Defines the IR instruction set and data structures:
-- **IR Instructions**: Load, store, arithmetic operations, control flow, function calls
-- **IR Values**: Temporary variables, constants, memory locations
-- **IR Types**: Integer, float, char, void type representations
-- **IR Program**: Complete program representation with functions and basic blocks
-
-**`generator.rs`**: Implements AST to IR translation:
-- Converts AST expressions to IR instruction sequences
-- Handles variable declarations and assignments
-- Translates control flow statements to IR branches
-- Manages temporary variable allocation
-- Supports function definitions and calls
-
-**`optimizer.rs`**: Implements IR optimization passes:
-- **Constant Folding**: Evaluates constant expressions at compile time
-- **Dead Code Elimination**: Removes unreachable code and unused variables
-- **Copy Propagation**: Replaces variable copies with direct references
-- **Basic Block Optimization**: Optimizes within basic blocks
-
-### 5. Code Generation (`src/codegen/`)
-
-**`codegen.rs`**: Implements direct x86-64 assembly code generation:
-- **Instruction Set**: Defines x86-64 instructions (`mov`, `add`, `sub`, `call`, etc.)
-- **Register Management**: Handles x86-64 registers (`rax`, `rbp`, `rsp`, etc.)
-- **Operand Types**: Immediate values, registers, memory locations, labels
-- **Direct Code Generation**: AST to assembly without intermediate representation
-
-**`ir_codegen.rs`**: Implements IR to x86-64 assembly translation:
-- Converts optimized IR instructions to x86-64 assembly
-- Handles register allocation for IR temporary variables
-- Implements proper calling conventions for IR function calls
-- Manages stack layout for IR variable storage
-
-**`analyzer.rs`**: Provides AST analysis utilities:
-- Variable type inference and collection
-- Format string analysis for print statements
-- Symbol table management for code generation
-
-**`expression.rs`**, **`statement.rs`**: Modular code generation:
-- Expression evaluation with proper register usage
-- Statement translation (declarations, control flow, returns)
-- Function prologues and epilogues
-- Built-in `println` function support
-
-**`emitter.rs`**, **`instruction.rs`**: Assembly output infrastructure:
-- Structured assembly instruction emission
-- x86-64 instruction and operand definitions
-- Comment generation for readable assembly output
-
-### 6. Main Application (`src/main.rs`)
-
-Demonstrates the complete compilation pipeline with two modes:
-
-**Direct Compilation (default)**:
-1. **Input**: C-like source code (embedded as string literal or file)
-2. **Lexing**: Tokenizes the source code
-3. **Parsing**: Builds an AST from tokens
-4. **Direct Code Generation**: Generates x86-64 assembly directly from AST
-5. **Output**: Writes assembly to `output.asm`
-
-**IR-Based Compilation (--ir flag)**:
-1. **Input**: C-like source code (embedded as string literal or file)
-2. **Lexing**: Tokenizes the source code
-3. **Parsing**: Builds an AST from tokens
-4. **IR Generation**: Converts AST to intermediate representation
-5. **IR Optimization**: Applies optimization passes (constant folding, dead code elimination)
-6. **IR Code Generation**: Translates optimized IR to x86-64 assembly
-7. **Output**: Writes assembly to `output_ir.asm`
-
-Example input program:
-```c
-int main() {
-    int x = 42;
-    float y = 3.14;
-    char c = 'a';
-    println("Hello, world!\n");
-    println("The integer is %d, the float is %f, and the char is %c.\n", x, y, c);
-    
-    if (x > 0) {
-        println(x + 1);
-        println("x is positive.\n");
-        return x + 1;
-    }
-    
-    return 0;
-}
 ```
+Source Code → Lexer → Parser → Semantic Analysis → IR Generation → Optimization → Code Generation → Assembly
+```
+
+1. **Lexical Analysis**: Converts source text into tokens with position tracking
+2. **Syntax Analysis**: Builds an Abstract Syntax Tree (AST) using recursive descent parsing
+3. **Semantic Analysis**: Performs memory safety checks and static analysis
+4. **IR Generation**: Translates AST to platform-independent intermediate representation
+5. **Optimization**: Applies optimization passes (constant folding, dead code elimination)
+6. **Code Generation**: Produces target-specific x86-64 assembly code
+
+### Design Decisions
+
+**Error Handling Strategy:**
+- Comprehensive error types covering all compilation phases
+- Position tracking for precise error reporting
+- Graceful error recovery where possible
+- Rust's `Result` type for safe error propagation
+
+**AST Design:**
+- Separate enums for expressions and statements
+- `Box<T>` for recursive structures to enable heap allocation
+- `PartialEq` derivation for testing and comparison
+- Immutable design for thread safety
+
+**Intermediate Representation:**
+- SSA-like form with temporary variables
+- Platform-independent instruction set
+- Optimization-friendly structure
+- Type information preservation
+
+**Code Generation:**
+- Target-specific assembly generation
+- System V ABI compliance for function calls
+- Stack-based variable storage
+- NASM-compatible output format
+
+**Memory Management:**
+- Stack allocation for local variables
+- No dynamic memory allocation in generated code
+- Static analysis for memory safety verification
+- Rust's ownership system for compiler memory safety
 
 ## Supported Language Features
 
 ### Data Types
 - `int`: 64-bit signed integers
-- `float`: 64-bit floating-point numbers
-- `char`: Single characters
+- `float`: 64-bit IEEE 754 floating-point numbers
+- `char`: Single ASCII characters
 - `void`: For functions with no return value
 
 ### Operators
-- **Arithmetic**: `+`, `-`, `*`, `/`
+- **Arithmetic**: `+`, `-`, `*`, `/` (with proper precedence)
 - **Comparison**: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - **Logical**: `&&`, `||`, `!`
-- **Unary**: `-` (negation)
+- **Unary**: `-` (negation), `!` (logical not)
 
 ### Control Flow
-- `if` statements with optional `else`
-- `return` statements
+- `if` statements with optional `else` branches
+- `return` statements with optional values
 - Function definitions and calls
+- Block statements with proper scoping
 
 ### Built-in Functions
-- `println()`: Print with newline support
-- Format string support for `%d` (integers), `%f` (floats), `%c` (characters)
+- `println()`: Formatted output with newline
+- Format specifiers: `%d` (integers), `%f` (floats), `%c` (characters)
 
-## Building and Running
+### Example Program
+```c
+int main() {
+    int x = 42;
+    float pi = 3.14159;
+    char grade = 'A';
+    
+    if (x > 40) {
+        println("Number is: %d", x);
+        println("Pi approximation: %.3f", pi);
+        println("Grade: %c", grade);
+    }
+    
+    int result = x * 2 + 10;
+    return result;
+}
 
-### Prerequisites
-- Rust 1.88.0 or later
-- NASM (Netwide Assembler) for assembling the output
-- GCC or compatible linker for creating executables
-
-### Build
-```bash
-cargo build
+float calculate_area() {
+    float radius = 5.0;
+    float pi = 3.14159;
+    return pi * radius * radius;
+}
 ```
 
-### Run the Compiler
+## Testing
 
-#### Direct Compilation (Default)
+### Running Tests
+
 ```bash
-cargo run
-```
-This generates `output.asm` containing the x86-64 assembly code using direct AST-to-assembly translation.
-
-#### IR-Based Compilation
-```bash
-cargo run -- --ir
-```
-This generates `output_ir.asm` containing the x86-64 assembly code using an intermediate representation (IR) pipeline:
-1. **AST → IR**: Converts the Abstract Syntax Tree to intermediate representation
-2. **IR Optimization**: Performs optimizations like constant folding and dead code elimination  
-3. **IR → Assembly**: Translates optimized IR to x86-64 assembly
-
-The IR pipeline provides better optimization opportunities and cleaner code generation architecture.
-
-### Assemble and Link (Windows)
-```bash
-nasm -f win64 output.asm -o output.obj
-gcc -o output.exe output.obj -lmsvcrt
-./output.exe
-```
-
-### Run Tests
-
-#### Unit Tests
-```bash
+# Run all tests
 cargo test
-```
-Runs unit tests for lexer, parser, and code generation components.
 
-#### Integration Tests
-```bash
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
 cargo test --test integration_tests
+
+# Run tests with verbose output
+cargo test -- --nocapture
 ```
-Runs comprehensive integration tests that validate the complete compilation pipeline by:
-- Compiling actual C code snippets through both direct and IR-based compilation paths
-- Validating IR output structure and instruction patterns
-- Verifying generated assembly contains expected instructions
-- Ensuring both compilation modes produce functionally equivalent results
 
-The integration test suite covers:
-- Variable declarations and assignments
-- Binary and unary arithmetic operations
-- Conditional statements and control flow
-- Print statements with format strings
-- Multiple data types (int, float, char)
-- Complex nested expressions
-- Block statements and variable scoping
-- Comparison operators
-- Expression statements
+### Test Coverage
 
-**Integration Test Structure:**
-Each test compiles a minimal C code snippet and validates:
-1. **IR Structure**: Checks for expected IR instructions (e.g., `%x = alloca i32`, `add i32`, `br %t1`)
-2. **Assembly Output**: Verifies both direct and IR-generated assembly contain expected x86-64 instructions
-3. **Functional Equivalence**: Ensures both compilation paths produce working assembly code
+**Unit Tests:**
+- Lexer: Token recognition, position tracking, error handling
+- Parser: AST construction, operator precedence, error recovery
+- IR: Instruction generation, optimization passes
+- Code Generation: Assembly output, register allocation
 
-## CI/CD Pipeline
+**Integration Tests:**
+- Complete compilation pipeline validation
+- Cross-platform assembly generation
+- Optimization effectiveness verification
+- Error handling across all phases
 
-The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that:
-1. **Builds** the project on Windows
-2. **Runs tests** to ensure correctness
-3. **Compiles and executes** the generated assembly to verify end-to-end functionality
+## Contributing
 
-The pipeline installs NASM and GCC, compiles the generated assembly, and executes the resulting binary.
+This project serves as an educational resource for understanding compiler construction. Contributions are welcome in the following areas:
 
-## Architecture Decisions
-
-### Error Handling
-- Uses Rust's `Result` type for comprehensive error handling
-- Custom `CompilerError` enum covers all compilation phases
-- Line/column tracking for precise error reporting
-
-### AST Design
-- Expressions and statements are separate enums
-- `Box<Expr>` used for recursive structures to enable heap allocation
-- `PartialEq` derived for easy testing and comparison
-
-### Code Generation
-- Targets x86-64 architecture with System V ABI
-- Uses stack-based variable storage
-- Implements proper function calling conventions
-- Generates NASM-compatible assembly syntax
-
-### Testing
-- Comprehensive unit tests for each compiler phase
-- Tests cover both positive cases and error conditions
-- Integration tests verify end-to-end compilation
-
-## Future Enhancements
-
-Potential areas for expansion:
-- **More data types**: Arrays, structs, pointers
-- **Advanced control flow**: `while`, `for` loops
-- **Function parameters**: Currently functions take no parameters
-- **Optimization**: Basic optimizations like constant folding
-- **Better error recovery**: Continue parsing after errors
-- **Symbol table**: Proper variable scoping and type checking
-- **More target architectures**: ARM64, RISC-V support
+- **Language Features**: Additional operators, control structures, data types
+- **Optimizations**: Advanced optimization passes, register allocation improvements
+- **Target Platforms**: Additional architecture support (ARM64, RISC-V)
+- **Error Handling**: Better error messages and recovery strategies
+- **Documentation**: Examples, tutorials, and architectural guides
 
 ## License
 
-This project is a educational compiler implementation demonstrating the fundamental concepts of language design and implementation.
+This project is an educational compiler implementation demonstrating fundamental concepts of programming language design and implementation. It is provided as-is for learning and research purposes.
+
+---
+
+**Note**: This compiler is designed for educational purposes and may not be suitable for production use. It demonstrates core compiler concepts and serves as a foundation for learning about language implementation.
