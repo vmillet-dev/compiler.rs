@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::ir::{IrProgram, IrFunction, IrInstruction, IrValue, IrType};
-use crate::codegen::core::{Emitter, Target, TargetPlatform, create_target};
+use crate::codegen::core::{Emitter};
 use crate::codegen::utils::{RegisterAllocator, StackManager};
 
 /// Modern IR backend with clean architecture
@@ -227,3 +227,4 @@ impl Codegen {
 // Include generator implementations
 #[allow(unused_imports)]
 use crate::codegen::generators::*;
+use crate::codegen::targets::{create_target, Target, TargetPlatform};

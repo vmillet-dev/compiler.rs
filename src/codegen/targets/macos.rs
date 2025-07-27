@@ -1,24 +1,24 @@
 use super::base::{Target, TargetPlatform, CallingConvention};
-use crate::codegen::core::instruction::Register;
+use crate::codegen::Register;
 
-/// Windows x64 target implementation
-pub struct WindowsX64Target;
+/// macOS x64 target implementation
+pub struct MacOSX64Target;
 
-impl Target for WindowsX64Target {
+impl Target for MacOSX64Target {
     fn platform(&self) -> TargetPlatform {
-        TargetPlatform::WindowsX64
+        TargetPlatform::MacOSX64
     }
     
     fn calling_convention(&self) -> CallingConvention {
-        CallingConvention::MicrosoftX64
+        CallingConvention::AppleX64
     }
     
     fn arch_name(&self) -> &'static str {
-        "x86-64 Windows"
+        "x86-64 macOS"
     }
     
     fn calling_convention_name(&self) -> &'static str {
-        "Microsoft x64"
+        "Apple x64 ABI"
     }
     
     fn assembly_directives(&self) -> Vec<String> {
@@ -38,13 +38,13 @@ impl Target for WindowsX64Target {
     
     fn external_declarations(&self) -> Vec<String> {
         vec![
-            "extern printf".to_string(),
-            "extern exit".to_string(),
+            "extern _printf".to_string(), // macOS prefixes with underscore
+            "extern _exit".to_string(),
         ]
     }
     
     fn global_declarations(&self, symbols: &[&str]) -> Vec<String> {
-        symbols.iter().map(|symbol| format!("global {}", symbol)).collect()
+        symbols.iter().map(|symbol| format!("global _{}", symbol)).collect() // macOS prefixes with underscore
     }
     
     fn function_prologue(&self) -> Vec<String> {
@@ -63,8 +63,8 @@ impl Target for WindowsX64Target {
     }
     
     fn parameter_registers(&self) -> Vec<Register> {
-        // Microsoft x64 calling convention
-        vec![Register::Rcx, Register::Rdx, Register::R8, Register::R9]
+        // macOS uses System V-like calling convention
+        vec![Register::Rdi, Register::Rsi, Register::Rdx, Register::Rcx, Register::R8, Register::R9]
     }
     
     fn return_register(&self) -> Register {
@@ -89,7 +89,7 @@ impl Target for WindowsX64Target {
     }
     
     fn format_function_call(&self, function_name: &str) -> Vec<String> {
-        vec![format!("call     {}", function_name)]
+        vec![format!("call     _{}", function_name)] // macOS prefixes with underscore
     }
     
     fn type_info(&self, type_name: &str) -> (usize, usize) {
@@ -104,6 +104,6 @@ impl Target for WindowsX64Target {
     }
     
     fn startup_code(&self) -> Vec<String> {
-        vec![] // Windows doesn't need special startup code for our use case
+        vec![] // macOS doesn't need special startup code for our use case
     }
 }

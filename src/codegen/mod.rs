@@ -7,15 +7,10 @@ pub mod utils;
 // Code generation modules
 pub mod generators;
 mod codegen;
+pub mod targets;
 
 // Re-export commonly used items
-pub use core::{
-    create_target, parse_target_platform, CallingConvention,
-    CodeEmitter, CodeEmitterWithComment, Emitter, Instruction,
-    LinuxX64Target, MacOSX64Target, Operand,
-    Register, Size, Target,
-    TargetPlatform, WindowsX64Target
-};
+pub use core::{CodeEmitter, CodeEmitterWithComment, Emitter, Instruction, Operand, Register, Size};
 
 pub use utils::{InstructionFormatter, RegisterAllocator, StackManager};
 

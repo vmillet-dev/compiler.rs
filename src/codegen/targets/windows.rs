@@ -1,24 +1,24 @@
 use super::base::{Target, TargetPlatform, CallingConvention};
-use crate::codegen::core::instruction::Register;
+use crate::codegen::Register;
 
-/// Linux x64 target implementation
-pub struct LinuxX64Target;
+/// Windows x64 target implementation
+pub struct WindowsX64Target;
 
-impl Target for LinuxX64Target {
+impl Target for WindowsX64Target {
     fn platform(&self) -> TargetPlatform {
-        TargetPlatform::LinuxX64
+        TargetPlatform::WindowsX64
     }
     
     fn calling_convention(&self) -> CallingConvention {
-        CallingConvention::SystemV
+        CallingConvention::MicrosoftX64
     }
     
     fn arch_name(&self) -> &'static str {
-        "x86-64 Linux"
+        "x86-64 Windows"
     }
     
     fn calling_convention_name(&self) -> &'static str {
-        "System V ABI"
+        "Microsoft x64"
     }
     
     fn assembly_directives(&self) -> Vec<String> {
@@ -63,8 +63,8 @@ impl Target for LinuxX64Target {
     }
     
     fn parameter_registers(&self) -> Vec<Register> {
-        // System V ABI parameter registers in order
-        vec![Register::Rdi, Register::Rsi, Register::Rdx, Register::Rcx, Register::R8, Register::R9]
+        // Microsoft x64 calling convention
+        vec![Register::Rcx, Register::Rdx, Register::R8, Register::R9]
     }
     
     fn return_register(&self) -> Register {
@@ -104,14 +104,6 @@ impl Target for LinuxX64Target {
     }
     
     fn startup_code(&self) -> Vec<String> {
-        vec![
-            "_start:".to_string(),
-            "    ; Linux entry point".to_string(),
-            "    call main".to_string(),
-            "    ; Exit with return value from main".to_string(),
-            "    mov rdi, rax    ; exit code".to_string(),
-            "    mov rax, 60     ; sys_exit".to_string(),
-            "    syscall".to_string(),
-        ]
+        vec![] // Windows doesn't need special startup code for our use case
     }
 }

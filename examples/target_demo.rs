@@ -1,4 +1,5 @@
-use compiler_minic::codegen::{Codegen, TargetPlatform};
+use compiler_minic::codegen::{Codegen};
+use compiler_minic::codegen::targets::TargetPlatform;
 use compiler_minic::ir::{IrProgram, IrFunction, IrInstruction, IrValue, IrType};
 
 fn main() {

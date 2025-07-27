@@ -51,7 +51,7 @@ jobs:
             executable_ext: ""
             continue_on_error: true
           - os: macos-latest
-            target: macos-x64
+            target: macos-auto
             nasm_format: macho64
             executable_ext: ""
             continue_on_error: true
@@ -115,13 +115,17 @@ jobs:
     
     - name: Link and create executable (macOS)
       if: matrix.os == 'macos-latest'
-      run: gcc -o build/output${{ matrix.executable_ext }} build/output.o
+      run: gcc -arch x86_64 -o build/output${{ matrix.executable_ext }} build/output.o
     
     # Execute the binary (all platforms)
     - name: Execute the binary (Windows)
       if: matrix.os == 'windows-latest'
       run: .\build\output${{ matrix.executable_ext }}
     
-    - name: Execute the binary (Linux/macOS)
-      if: matrix.os != 'windows-latest'
+    - name: Execute the binary (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: ./build/output${{ matrix.executable_ext }}
+    
+    - name: Execute the binary (macOS)
+      if: matrix.os == 'macos-latest'
+      run: arch -x86_64 ./build/output${{ matrix.executable_ext }}

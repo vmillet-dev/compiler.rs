@@ -1,4 +1,4 @@
-use crate::codegen::core::instruction::Register;
+use crate::codegen::Register;
 
 /// Represents different target platforms
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6,6 +6,7 @@ pub enum TargetPlatform {
     WindowsX64,
     LinuxX64,
     MacOSX64,
+    MacOSArm64,
 }
 
 /// Represents different calling conventions
@@ -14,6 +15,7 @@ pub enum CallingConvention {
     MicrosoftX64,
     SystemV,
     AppleX64,
+    AppleArm64,
 }
 
 /// Target-specific configuration and behavior

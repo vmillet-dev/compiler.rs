@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::Parser;
-use compiler_minic::codegen::{Codegen, TargetPlatform, parse_target_platform};
+use compiler_minic::codegen::{Codegen};
+use compiler_minic::codegen::targets::{parse_target_platform, TargetPlatform};
 use compiler_minic::lexer::Lexer;
 use compiler_minic::parser::Parser as MiniCParser;
 use compiler_minic::ir::{IrGenerator, IrOptimizer};
@@ -20,7 +21,7 @@ struct Cli {
     input: Option<PathBuf>,
 
     /// Target platform for code generation
-    #[arg(short, long, default_value = "windows-x64")]
+    #[arg(short, long, default_value = "auto", )]
     target: String,
 
     /// Output directory for generated files
@@ -50,9 +51,13 @@ fn main() {
 }
 
 fn run_compiler(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    // Parse target platform
-    let target_platform = parse_target_platform(&cli.target)
-        .map_err(|_| format!("Invalid target platform: {}", cli.target))?;
+    // Parse target platform with smart defaults
+    let target_platform = if cli.target == "auto" {
+        detect_current_platform()?
+    } else {
+        parse_target_platform(&cli.target)
+            .map_err(|_| format!("Invalid target platform: {}", cli.target))?
+    };
 
     if cli.verbose {
         println!("Target platform: {:?}", target_platform);
@@ -305,4 +310,20 @@ fn generate_assembly(
     }
 
     Ok(())
+}
+
+/// Detect the current platform automatically
+fn detect_current_platform() -> Result<TargetPlatform, Box<dyn std::error::Error>> {
+    match std::env::consts::OS {
+        "windows" => Ok(TargetPlatform::WindowsX64),
+        "linux" => Ok(TargetPlatform::LinuxX64),
+        "macos" => {
+            match std::env::consts::ARCH {
+                "aarch64" => Ok(TargetPlatform::MacOSArm64),
+                "x86_64" => Ok(TargetPlatform::MacOSX64),
+                arch => Err(format!("Unsupported macOS architecture: {}", arch).into()),
+            }
+        },
+        os => Err(format!("Unsupported operating system: {}", os).into()),
+    }
 }
