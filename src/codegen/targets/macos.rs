@@ -91,7 +91,11 @@ impl Target for MacOSX64Target {
     fn format_function_call(&self, function_name: &str) -> Vec<String> {
         vec![format!("call     _{}", function_name)] // macOS prefixes with underscore
     }
-    
+
+    fn format_function_name(&self, function_name: &str) -> String {
+        format!("_{}:", function_name)
+    }
+
     fn type_info(&self, type_name: &str) -> (usize, usize) {
         match type_name {
             "int" | "i32" => (4, 4),

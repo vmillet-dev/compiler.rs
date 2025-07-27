@@ -7,7 +7,7 @@ impl Codegen {
     /// Generate assembly for a single function
     pub fn generate_function(&mut self, function: &IrFunction) {
         self.emit_subsection_header(&format!("FUNCTION: {}", function.name));
-        self.emit_line(&format!("{}:", function.name));
+        self.emit_line(self.target.format_function_name(&function.name).as_str());
         
         // Reset state for new function
         self.stack_offset = 0;

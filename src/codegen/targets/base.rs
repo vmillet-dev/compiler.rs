@@ -73,7 +73,11 @@ pub trait Target {
     
     /// Format a function call instruction
     fn format_function_call(&self, function_name: &str) -> Vec<String>;
-    
+
+    /// Format a function call instruction
+    fn format_function_name(&self, function_name: &str) -> String;
+
+
     /// Get the size and alignment for a data type
     fn type_info(&self, type_name: &str) -> (usize, usize); // (size, alignment)
     
