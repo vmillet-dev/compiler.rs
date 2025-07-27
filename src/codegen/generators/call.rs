@@ -1,9 +1,9 @@
 use crate::ir::{IrValue, IrType};
 use crate::codegen::core::{Instruction, Operand, Register};
 use crate::codegen::core::{Emitter, CodeEmitterWithComment};
-use crate::codegen::backend::IrBackend;
+use crate::codegen::Codegen;
 
-impl IrBackend {
+impl Codegen {
     /// Generate function call
     pub fn generate_function_call(&mut self, dest: &Option<IrValue>, func: &str, args: &[IrValue], return_type: &IrType) {
         self.emit_comment(&format!("call {} with {} args", func, args.len()));

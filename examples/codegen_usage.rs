@@ -5,7 +5,7 @@ use compiler_minic::codegen::{
     // Core traits and types
     Emitter, CodeEmitter, Instruction, Operand, Register, Size,
     // Backend implementations
-    IrBackend,
+    Codegen,
     // Utilities
     RegisterAllocator, StackManager, InstructionFormatter,
 };
@@ -13,7 +13,7 @@ use compiler_minic::codegen::{
 fn main() {
     // Example 1: Using the new IrBackend
     println!("=== New IrBackend Example ===");
-    let mut backend = IrBackend::new();
+    let mut backend = Codegen::new();
     
     // The backend implements Emitter trait
     backend.emit_comment("This is a comment");
@@ -57,7 +57,7 @@ fn main() {
     
     // Example 3: Additional IrBackend features
     println!("\n=== Additional IrBackend Features ===");
-    let mut backend2 = IrBackend::new();
+    let mut backend2 = Codegen::new();
     backend2.emit_section_header("EXAMPLE SECTION");
     backend2.emit_subsection_header("Example Subsection");
     let label = backend2.generate_label("example");
@@ -71,7 +71,7 @@ mod tests {
     
     #[test]
     fn test_new_backend_basic_functionality() {
-        let mut backend = IrBackend::new();
+        let mut backend = Codegen::new();
         backend.emit_comment("Test comment");
         backend.emit_instruction(Instruction::Mov, vec![
             Operand::Register(Register::Rax),
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn test_additional_features() {
         // Test additional IrBackend features
-        let mut backend = IrBackend::new();
+        let mut backend = Codegen::new();
         backend.emit_section_header("TEST SECTION");
         let label = backend.generate_label("test");
         backend.emit_label(&label);

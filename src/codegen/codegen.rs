@@ -4,7 +4,7 @@ use crate::codegen::core::{Emitter, Target, TargetPlatform, create_target};
 use crate::codegen::utils::{RegisterAllocator, StackManager};
 
 /// Modern IR backend with clean architecture
-pub struct IrBackend {
+pub struct Codegen {
     pub output: String,
     pub stack_offset: i32,
     pub locals: HashMap<String, i32>,
@@ -18,7 +18,7 @@ pub struct IrBackend {
     register_allocator: RegisterAllocator,
 }
 
-impl IrBackend {
+impl Codegen {
     pub fn new() -> Self {
         Self::new_with_target(TargetPlatform::WindowsX64)
     }
@@ -157,7 +157,7 @@ impl IrBackend {
 }
 
 // Implement the emitter traits for IrBackend
-impl Emitter for IrBackend {
+impl Emitter for Codegen {
     fn emit_line(&mut self, line: &str) {
         self.output.push_str(line);
         self.output.push('\n');
@@ -169,7 +169,7 @@ impl Emitter for IrBackend {
 }
 
 // Helper methods for IrBackend
-impl IrBackend {
+impl Codegen {
     /// Emit a section header with clear visual separation
     pub fn emit_section_header(&mut self, title: &str) {
         self.emit_line("");
@@ -226,4 +226,4 @@ impl IrBackend {
 
 // Include generator implementations
 #[allow(unused_imports)]
-use super::super::generators::*;
+use crate::codegen::generators::*;

@@ -1,4 +1,4 @@
-use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{IrCodegen}};
+use compiler_minic::{lexer::Lexer, parser::Parser, ir::generator::IrGenerator, codegen::{Codegen}};
 
 #[cfg(test)]
 mod ir_integration_tests {
@@ -14,7 +14,7 @@ mod ir_integration_tests {
         let ir_program = ir_generator.generate(&ast).expect("IR generation should succeed");
         let ir_output = format!("{}", ir_program);
         
-        let ir_codegen = IrCodegen::new();
+        let ir_codegen = Codegen::new();
         let ir_asm = ir_codegen.generate(&ir_program);
 
         // For now, we only have IR-based compilation, so we return the same assembly for both
