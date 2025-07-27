@@ -45,7 +45,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "define i32 @main()",
@@ -55,12 +55,12 @@ int main() {
             "ret i32 %t0"
         ]);
 
-        validate_asm_structure(&direct_asm, &["mov", "rbp"]);
+        validate_asm_structure(&_direct_asm, &["mov", "rbp"]);
         validate_asm_structure(&ir_asm, &["mov", "rbp"]);
 
-        assert!(!direct_asm.is_empty());
+        assert!(!_direct_asm.is_empty());
         assert!(!ir_asm.is_empty());
-        assert!(direct_asm.contains("main:"));
+        assert!(_direct_asm.contains("main:"));
         assert!(ir_asm.contains("main:"));
     }
 
@@ -77,7 +77,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%a = alloca i32",
@@ -88,7 +88,7 @@ int main() {
             "mul i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["add", "sub", "imul"]);
+        validate_asm_structure(&_direct_asm, &["add", "sub", "imul"]);
         validate_asm_structure(&ir_asm, &["add", "sub", "imul"]);
     }
 
@@ -104,7 +104,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "gt i32",
@@ -113,7 +113,7 @@ int main() {
             "if_end_1:"
         ]);
 
-        validate_asm_structure(&direct_asm, &["cmp"]);
+        validate_asm_structure(&_direct_asm, &["cmp"]);
         validate_asm_structure(&ir_asm, &["setg", "je"]);
     }
 
@@ -128,14 +128,14 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "print \"str_",
             "@str_0 = constant str \"Value is:\""
         ]);
 
-        validate_asm_structure(&direct_asm, &["call     printf"]);
+        validate_asm_structure(&_direct_asm, &["call     printf"]);
         validate_asm_structure(&ir_asm, &["call     printf"]);
     }
 
@@ -153,7 +153,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%number = alloca i32",
@@ -164,7 +164,7 @@ int main() {
             "store i8 'A'"
         ]);
 
-        assert!(direct_asm.contains("dword") || direct_asm.contains("qword"));
+        assert!(_direct_asm.contains("dword") || _direct_asm.contains("qword"));
         assert!(ir_asm.contains("dword") || ir_asm.contains("qword"));
     }
 
@@ -179,7 +179,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%t0 =",
@@ -190,7 +190,7 @@ int main() {
             "sub i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["add", "imul", "sub"]);
+        validate_asm_structure(&_direct_asm, &["add", "imul", "sub"]);
         validate_asm_structure(&ir_asm, &["add", "imul", "sub"]);
     }
 
@@ -204,13 +204,13 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "neg i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["neg"]);
+        validate_asm_structure(&_direct_asm, &["neg"]);
         validate_asm_structure(&ir_asm, &["neg"]);
     }
 
@@ -224,14 +224,14 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "@str_0 = constant str \"Hello, World!\"",
             "@str_1 = constant str \"Testing string literals\""
         ]);
 
-        assert!(direct_asm.contains("section .data") || direct_asm.contains("Hello, World!"));
+        assert!(_direct_asm.contains("section .data") || _direct_asm.contains("Hello, World!"));
         assert!(ir_asm.contains("section .data") || ir_asm.contains("Hello, World!"));
     }
 
@@ -247,7 +247,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%x = alloca i32",
@@ -256,7 +256,7 @@ int main() {
             "load i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["mov"]);
+        validate_asm_structure(&_direct_asm, &["mov"]);
         validate_asm_structure(&ir_asm, &["mov"]);
     }
 
@@ -272,7 +272,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%t0 =",
@@ -285,7 +285,7 @@ int main() {
             "sub i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["add", "imul", "sub"]);
+        validate_asm_structure(&_direct_asm, &["add", "imul", "sub"]);
         validate_asm_structure(&ir_asm, &["add", "imul", "sub"]);
     }
 
@@ -301,7 +301,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%i = alloca i32",
@@ -312,7 +312,7 @@ int main() {
             "store i8 'X'"
         ]);
 
-        assert!(direct_asm.contains("dword") || direct_asm.contains("qword"));
+        assert!(_direct_asm.contains("dword") || _direct_asm.contains("qword"));
         assert!(ir_asm.contains("dword") || ir_asm.contains("qword"));
     }
 
@@ -329,7 +329,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%x = alloca i32",
@@ -337,7 +337,7 @@ int main() {
             "store i32 20"
         ]);
 
-        validate_asm_structure(&direct_asm, &["mov", "add"]);
+        validate_asm_structure(&_direct_asm, &["mov", "add"]);
         validate_asm_structure(&ir_asm, &["mov", "add"]);
     }
 
@@ -353,7 +353,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "gt i32",
@@ -363,7 +363,7 @@ int main() {
             "if_end_1:"
         ]);
 
-        validate_asm_structure(&direct_asm, &["cmp", "ret"]);
+        validate_asm_structure(&_direct_asm, &["cmp", "ret"]);
         validate_asm_structure(&ir_asm, &["setg", "je", "ret"]);
     }
 
@@ -383,7 +383,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "eq i32",
@@ -394,7 +394,7 @@ int main() {
             "ge i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["cmp"]);
+        validate_asm_structure(&_direct_asm, &["cmp"]);
         validate_asm_structure(&ir_asm, &["cmp"]);
     }
 
@@ -410,14 +410,14 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "print \"str_",
             "@str_0 = constant str \"Number: %d, Pi: %f, Letter: %c\""
         ]);
 
-        validate_asm_structure(&direct_asm, &["call     printf"]);
+        validate_asm_structure(&_direct_asm, &["call     printf"]);
         validate_asm_structure(&ir_asm, &["call     printf"]);
     }
 
@@ -433,7 +433,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%x = alloca i32",
@@ -443,7 +443,7 @@ int main() {
             "neg i32"
         ]);
 
-        validate_asm_structure(&direct_asm, &["mov"]);
+        validate_asm_structure(&_direct_asm, &["mov"]);
         validate_asm_structure(&ir_asm, &["mov"]);
     }
 
@@ -461,7 +461,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "%x = alloca i32",
@@ -469,7 +469,7 @@ int main() {
             "store i32 20"
         ]);
 
-        validate_asm_structure(&direct_asm, &["mov"]);
+        validate_asm_structure(&_direct_asm, &["mov"]);
         validate_asm_structure(&ir_asm, &["mov"]);
     }
 
@@ -481,7 +481,7 @@ int add(int a, int b) {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "define i32 @add(i32 %a, i32 %b)",
@@ -504,7 +504,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "and_false_",
@@ -527,7 +527,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "or_true_",
@@ -551,7 +551,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "and_false_",
@@ -575,7 +575,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "loop_start_",
@@ -600,7 +600,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "for_start_",
@@ -630,7 +630,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "for_start_",
@@ -662,7 +662,7 @@ int main() {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "loop_start_",
@@ -682,7 +682,7 @@ int test(int x, int y) {
 }
 "#;
 
-        let (direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
+        let (_direct_asm, ir_asm, ir_output, _) = compile_both_ways(source);
 
         validate_ir_structure(&ir_output, &[
             "define i32 @test(i32 %x, i32 %y)",
