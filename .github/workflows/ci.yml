@@ -48,7 +48,7 @@ jobs:
           - os: ubuntu-latest
             target: linux-x64
             nasm_format: elf64
-            executable_ext: "_linux"
+            executable_ext: ""
             continue_on_error: true
           - os: macos-latest
             target: macos-auto
@@ -111,11 +111,11 @@ jobs:
     # macOS assembly and linking
     - name: Compile ASM to object file (macOS)
       if: matrix.os == 'macos-latest'
-      run: nasm -f ${{ matrix.nasm_format }} build/output.asm -o build/output.o
+      run: nasm -f ${{ matrix.nasm_format }} build/output.asm -o build/output${{ matrix.executable_ext }}.o
     
     - name: Link and create executable (macOS)
       if: matrix.os == 'macos-latest'
-      run: gcc -o build/output${{ matrix.executable_ext }} build/output.o
+      run: gcc -o build/output${{ matrix.executable_ext }} build/output${{ matrix.executable_ext }}.o
     
     # Execute the binary (all platforms)
     - name: Execute the binary (Windows)
