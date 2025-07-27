@@ -115,7 +115,7 @@ jobs:
     
     - name: Link and create executable (macOS)
       if: matrix.os == 'macos-latest'
-      run: gcc -arch x86_64 -o build/output${{ matrix.executable_ext }} build/output.o
+      run: gcc -o build/output${{ matrix.executable_ext }} build/output.o
     
     # Execute the binary (all platforms)
     - name: Execute the binary (Windows)
@@ -128,4 +128,4 @@ jobs:
     
     - name: Execute the binary (macOS)
       if: matrix.os == 'macos-latest'
-      run: arch -aarch64 ./build/output${{ matrix.executable_ext }}
+      run: ./build/output${{ matrix.executable_ext }}
